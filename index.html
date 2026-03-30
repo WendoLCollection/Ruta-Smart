@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Ruta Smart</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Google Fonts for modern typography -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- PDF.js - Hosted Locally for Offline support -->
+    <script src="pdf.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdf.worker.min.js';
+    </script>
+</head>
+<body>
+    <div id="app">
+        <div class="top-bar-container">
+            <header class="header">
+                <h1 class="logo">Ruta Smart</h1>
+                
+                <div id="header-date-selector" class="date-selector hidden">
+                    <select id="date-filter"></select>
+                </div>
+                
+                <div class="actions">
+                    <label for="pdf-upload" class="btn-compact">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                        <span>Cargar</span>
+                    </label>
+                    <input type="file" id="pdf-upload" accept=".pdf" />
+                </div>
+            </header>
+
+            <div id="metadata-bar" class="metadata-bar hidden">
+                <span class="metadata-label">DETALLE RUTAS TRANSPORTISTA</span>
+                <span id="pdf-timestamp" class="metadata-value"></span>
+            </div>
+        </div>
+
+        <div id="loader" class="loader hidden">
+            <div class="spinner"></div>
+            <p>Procesando documento...</p>
+        </div>
+
+        <main id="main-content" class="content">
+            <div id="empty-state" class="empty-state">
+                <div class="empty-icon">📄</div>
+                <h2>Ningún PDF cargado</h2>
+                <p>Carga el PDF de tus rutas diarias de transporte para ver tus tareas organizadas.</p>
+            </div>
+
+            <div id="tasks-container" class="hidden">
+                <!-- Date selector removed from here -->
+
+                <div id="tasks-list" class="tasks-list">
+                    <!-- Tasks will be injected here -->
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <script src="app.js"></script>
+</body>
+</html>
