@@ -8,11 +8,29 @@ const dateFilter = document.getElementById('date-filter');
 const headerDateSelector = document.getElementById('header-date-selector');
 const metadataBar = document.getElementById('metadata-bar');
 const pdfTimestampEl = document.getElementById('pdf-timestamp');
+const btnViewPdf = document.getElementById('btn-view-pdf');
+const btnToggleCheck = document.getElementById('btn-toggle-check');
 
 let allRouteGroups = [];
 let availableDates = [];
 let pdfCreationTime = '';
 let notificationInterval = null;
+let currentPdfUrl = null;
+let isCheckModeEnabled = true;
+
+// Toggle Check Mode
+btnToggleCheck.addEventListener('click', () => {
+    isCheckModeEnabled = !isCheckModeEnabled;
+    btnToggleCheck.classList.toggle('active', isCheckModeEnabled);
+    renderTasks();
+});
+
+// Original PDF Viewer
+btnViewPdf.addEventListener('click', () => {
+    if (currentPdfUrl) {
+        window.open(currentPdfUrl, '_blank');
+    }
+});
 
 // Request Notifications Permission - Temporarily Disabled
 /*
@@ -25,6 +43,14 @@ if ("Notification" in window && Notification.permission !== "denied" && Notifica
 uploadBtn.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+
+    // Original PDF viewing logic
+    if (currentPdfUrl) URL.revokeObjectURL(currentPdfUrl);
+    currentPdfUrl = URL.createObjectURL(file);
+    btnViewPdf.classList.remove('hidden');
+    btnToggleCheck.classList.remove('hidden');
+    btnToggleCheck.classList.add('active'); // Start with active by default
+    isCheckModeEnabled = true;
 
     loader.classList.remove('hidden');
     emptyState.classList.add('hidden');
@@ -390,8 +416,42 @@ function renderTasks() {
                 if (parsedReporte.length === 0) {
                     prodHTML = `<div class="divider"></div><div class="section-label">Detalle de Reporte</div><ul class="task-products">${task.productos.map(p => `<li>${p}</li>`).join('')}</ul>`;
                 } else {
-                    let tableRows = parsedReporte.map(pr => `<tr><td>${pr.pedido}</td><td>${pr.huecos}</td><td>${pr.destinoFinal}</td></tr>`).join('');
-                    prodHTML = `<div class="divider"></div><div class="section-label">Detalle de Reporte</div><div class="table-responsive"><table class="products-table"><thead><tr><th>Nº PEDIDO</th><th>HUECOS</th><th>DESTINO FINAL</th></tr></thead><tbody>${tableRows}</tbody></table></div>`;
+                    let tableRows = parsedReporte.map(pr => {
+                        const huecosRaw = parseFloat(pr.huecos.replace(',', '.')) || 0;
+                        const numChecks = Math.floor(huecosRaw);
+                        let checksHTML = '';
+                        for(let i=0; i<numChecks; i++) {
+                            checksHTML += `
+                                <label class="check-wrapper">
+                                    <input type="checkbox" class="task-check" />
+                                    <span class="check-number">${i+1}</span>
+                                </label>
+                            `;
+                        }
+                        
+                        // Checkboxes only for CARGA and if mode is enabled
+                        const checkRow = (task.tipo === 'CARGA' && isCheckModeEnabled) ? `
+                            <tr class="check-row">
+                                <td colspan="3">
+                                    <div class="checkbox-group">
+                                        ${checksHTML}
+                                        <span class="check-label">Comprobar carga</span>
+                                    </div>
+                                </td>
+                            </tr>
+                        ` : '';
+                        
+                        return `
+                            <tr class="item-main-row">
+                                <td class="item-pedido">${pr.pedido}</td>
+                                <td class="item-huecos">${pr.huecos}</td>
+                                <td class="item-destino">${pr.destinoFinal}</td>
+                            </tr>
+                            ${checkRow}
+                        `;
+                    }).join('');
+                    
+                    prodHTML = `<div class="divider"></div><div class="section-label">Detalle de Reporte ${task.tipo === 'CARGA' ? '(Modo Comprobación)' : ''}</div><div class="table-responsive"><table class="products-table reporte-table"><thead><tr><th>Nº PEDIDO</th><th>HUECOS</th><th>DESTINO</th></tr></thead><tbody>${tableRows}</tbody></table></div>`;
                 }
             }
         }
