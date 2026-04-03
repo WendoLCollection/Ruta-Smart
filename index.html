@@ -17,28 +17,36 @@
     <div id="app">
         <div class="top-bar-container">
             <header class="header">
-                <h1 class="logo">Ruta Smart</h1>
-                
-                <div id="header-date-selector" class="date-selector hidden">
-                    <select id="date-filter"></select>
+                <div class="header-row">
+                    <h1 class="logo">Ruta Smart</h1>
+                    
+                    <div id="header-date-selector" class="date-selector hidden">
+                        <select id="date-filter"></select>
+                    </div>
+
+                    <button id="btn-expand-tools" class="btn-icon hidden" title="Más herramientas">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                    </button>
+                    
+                    <div class="upload-action">
+                        <label for="pdf-upload" class="btn-compact">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                            <span>Cargar</span>
+                        </label>
+                        <input type="file" id="pdf-upload" accept=".pdf" />
+                    </div>
                 </div>
-                
-                <div class="actions">
-                    <button id="btn-toggle-check" class="btn-compact hidden" title="Modo Comprobar Carga">
+
+                <div id="header-tools" class="header-tools collapsed hidden">
+                    <button id="btn-toggle-check" class="btn-compact" title="Modo Comprobar Carga">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
                         <span>Checks</span>
                     </button>
                     
-                    <button id="btn-view-pdf" class="btn-compact hidden" title="Ver PDF Original">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                        <span>Ver</span>
+                    <button id="btn-view-pdf" class="btn-compact secondary" title="Ver PDF Original">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                        <span>Ver PDF original</span>
                     </button>
-                    
-                    <label for="pdf-upload" class="btn-compact">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-                        <span>Cargar</span>
-                    </label>
-                    <input type="file" id="pdf-upload" accept=".pdf" />
                 </div>
             </header>
 
@@ -56,13 +64,25 @@
         <main id="main-content" class="content">
             <div id="empty-state" class="empty-state">
                 <div class="empty-icon">📄</div>
-                <h2>Ningún PDF cargado</h2>
-                <p>Carga el PDF de tus rutas diarias de transporte para ver tus tareas organizadas.</p>
+                <h2>Ruta Smart</h2>
+                
+                <div class="disclaimer-alert">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                    <span><strong>AVISO IMPORTANTE:</strong> Ante cualquier duda, consulta siempre el <strong>PDF ORIGINAL</strong> para evitar errores.</span>
+                </div>
+
+                <p>Carga el PDF de tus rutas diarias para ver tus tareas organizadas.</p>
+
+                <div id="history-container" class="history-section hidden">
+                    <div class="divider"></div>
+                    <h3>Cargas recientes</h3>
+                    <div id="history-list" class="history-list">
+                        <!-- History items injected here -->
+                    </div>
+                </div>
             </div>
 
             <div id="tasks-container" class="hidden">
-                <!-- Date selector removed from here -->
-
                 <div id="tasks-list" class="tasks-list">
                     <!-- Tasks will be injected here -->
                 </div>
