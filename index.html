@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Ruta Smart</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#10b981">
+    <title>Ruta Smart - Lector PDF</title>
     <link rel="stylesheet" href="style.css">
     <!-- Google Fonts for modern typography -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -18,7 +20,7 @@
         <div class="top-bar-container">
             <header class="header">
                 <div class="header-row">
-                    <h1 class="logo">Ruta Smart</h1>
+                    <h1 id="btn-home" class="app-logo selectable">Ruta Smart</h1>
                     
                     <div id="header-date-selector" class="date-selector hidden">
                         <select id="date-filter"></select>
@@ -63,15 +65,23 @@
 
         <main id="main-content" class="content">
             <div id="empty-state" class="empty-state">
-                <div class="empty-icon">📄</div>
-                <h2>Ruta Smart</h2>
-                
-                <div class="disclaimer-alert">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-                    <span><strong>AVISO IMPORTANTE:</strong> Ante cualquier duda, consulta siempre el <strong>PDF ORIGINAL</strong> para evitar errores.</span>
+                <div id="welcome-view">
+                    <div class="empty-icon">📄</div>
+                    <h2>Ruta Smart</h2>
+                    
+                    <div class="disclaimer-alert">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                        <span><strong>AVISO IMPORTANTE:</strong> Ante cualquier duda, consulta siempre el <strong>PDF ORIGINAL</strong> para evitar errores.</span>
+                    </div>
+
+                    <p>Carga el PDF de tus rutas diarias para ver tus tareas organizadas.</p>
                 </div>
 
-                <p>Carga el PDF de tus rutas diarias para ver tus tareas organizadas.</p>
+                <div id="error-view" class="hidden">
+                    <div class="empty-icon">⚠️</div>
+                    <h2>No se encontraron tareas</h2>
+                    <p>El formato del PDF puede ser diferente al esperado o no contener tareas legibles.</p>
+                </div>
 
                 <div id="history-container" class="history-section hidden">
                     <div class="divider"></div>
@@ -87,6 +97,7 @@
                     <!-- Tasks will be injected here -->
                 </div>
             </div>
+            <footer id="ad-footer" class="ad-footer"><div class="ad-container"><span class="ad-tag">Patrocinio</span><p class="ad-text">Ruta Smart Plus: Gestiona rutas complejas sin esfuerzo. <span>Ver más</span></p><button id="btn-close-ad" class="btn-close-ad">&times;</button></div></footer>
         </main>
     </div>
     

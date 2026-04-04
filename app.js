@@ -2,6 +2,8 @@
 const uploadBtn = document.getElementById('pdf-upload');
 const loader = document.getElementById('loader');
 const emptyState = document.getElementById('empty-state');
+const welcomeView = document.getElementById('welcome-view');
+const errorView = document.getElementById('error-view');
 const tasksContainer = document.getElementById('tasks-container');
 const tasksList = document.getElementById('tasks-list');
 const dateFilter = document.getElementById('date-filter');
@@ -9,6 +11,7 @@ const headerDateSelector = document.getElementById('header-date-selector');
 const metadataBar = document.getElementById('metadata-bar');
 const pdfTimestampEl = document.getElementById('pdf-timestamp');
 const btnViewPdf = document.getElementById('btn-view-pdf');
+const btnHome = document.getElementById('btn-home');
 const btnToggleCheck = document.getElementById('btn-toggle-check');
 const headerTools = document.getElementById('header-tools');
 const btnExpandTools = document.getElementById('btn-expand-tools');
@@ -20,7 +23,28 @@ let availableDates = [];
 let pdfCreationTime = '';
 let notificationInterval = null;
 let currentPdfUrl = null;
+let currentPdfFilename = '';
 let isCheckModeEnabled = false;
+
+// LocalStorage for Checks
+function saveCheck(pedido, count) {
+    if (!currentPdfFilename) return;
+    const key = `rs_checks_${currentPdfFilename}`;
+    let checks = JSON.parse(localStorage.getItem(key) || '{}');
+    if (count > 0) {
+        checks[pedido] = count;
+    } else {
+        delete checks[pedido];
+    }
+    localStorage.setItem(key, JSON.stringify(checks));
+}
+
+function getSavedCheck(pedido) {
+    if (!currentPdfFilename) return 0;
+    const key = `rs_checks_${currentPdfFilename}`;
+    let checks = JSON.parse(localStorage.getItem(key) || '{}');
+    return checks[pedido] || 0;
+}
 
 // Local Pallet Counter (Per trip)
 function refreshLocalCounter(card) {
@@ -30,6 +54,26 @@ function refreshLocalCounter(card) {
         tripCounter.textContent = card.querySelectorAll('.check-item-badge').length;
     }
 }
+
+// Home Button Reset
+btnHome.addEventListener('click', () => {
+    currentPdfUrl = null;
+    currentPdfFilename = '';
+    allRouteGroups = [];
+    
+    // UI Reset
+    emptyState.classList.remove('hidden');
+    welcomeView.classList.remove('hidden');
+    errorView.classList.add('hidden');
+    
+    tasksContainer.classList.add('hidden');
+    headerDateSelector.classList.add('hidden');
+    metadataBar.classList.add('hidden');
+    btnExpandTools.classList.add('hidden');
+    headerTools.classList.add('hidden');
+    
+    renderHistory();
+});
 
 // History Logic
 function saveToHistory(filename, routeGroups, creationTime) {
@@ -77,6 +121,7 @@ function renderHistory() {
             const item = history[idx];
             allRouteGroups = item.routeGroups;
             pdfCreationTime = item.creationTime;
+            currentPdfFilename = item.filename;
             
             // UI Update
             emptyState.classList.add('hidden');
@@ -167,7 +212,12 @@ function parseReporteItems(productos) {
 // Original PDF Viewer
 btnViewPdf.addEventListener('click', () => {
     if (currentPdfUrl) {
-        window.open(currentPdfUrl, '_blank');
+        const link = document.createElement('a');
+        link.href = currentPdfUrl;
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     }
 });
 
@@ -230,6 +280,7 @@ dateFilter.addEventListener('change', renderTasks);
 
 // Logic
 function parsePDFText(text, filename) {
+    currentPdfFilename = filename;
     const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
     allRouteGroups = [];
     
@@ -403,24 +454,30 @@ function parsePDFText(text, filename) {
         allRouteGroups.push(currentGroup);
     }
 
-    // Populate Filters
-    const allTaskDates = allRouteGroups.flatMap(g => g.tasks.map(t => t.fecha));
-    const datesSet = new Set(allTaskDates.filter(f => f));
-    availableDates = Array.from(datesSet).sort((a,b) => {
-        const [d1,m1,y1] = a.split('/');
-        const [d2,m2,y2] = b.split('/');
-        return new Date(y1,m1-1,d1) - new Date(y2,m2-1,d2);
-    });
+    if (allRouteGroups.length > 0) {
+        welcomeView.classList.add('hidden');
+        errorView.classList.add('hidden');
+        emptyState.classList.add('hidden');
 
-    renderFilters();
-    
-    if (availableDates.length > 0) {
-        const today = new Date();
-        const todayStr = String(today.getDate()).padStart(2, '0') + '/' + String(today.getMonth()+1).padStart(2, '0') + '/' + today.getFullYear();
-        if (availableDates.includes(todayStr)) {
-            dateFilter.value = todayStr;
-        } else {
-            dateFilter.value = availableDates[0];
+        // Populate Filters
+        const allTaskDates = allRouteGroups.flatMap(g => g.tasks.map(t => t.fecha));
+        const datesSet = new Set(allTaskDates.filter(f => f));
+        availableDates = Array.from(datesSet).sort((a,b) => {
+            const [d1,m1,y1] = a.split('/');
+            const [d2,m2,y2] = b.split('/');
+            return new Date(y1,m1-1,d1) - new Date(y2,m2-1,d2);
+        });
+
+        renderFilters();
+        
+        if (availableDates.length > 0) {
+            const today = new Date();
+            const todayStr = String(today.getDate()).padStart(2, '0') + '/' + String(today.getMonth()+1).padStart(2, '0') + '/' + today.getFullYear();
+            if (availableDates.includes(todayStr)) {
+                dateFilter.value = todayStr;
+            } else {
+                dateFilter.value = availableDates[0];
+            }
         }
         
         headerDateSelector.classList.remove('hidden');
@@ -431,11 +488,8 @@ function parsePDFText(text, filename) {
     } else {
         headerDateSelector.classList.add('hidden');
         metadataBar.classList.add('hidden');
-        emptyState.innerHTML = `
-            <div class="empty-icon">⚠️</div>
-            <h2>No se encontraron tareas</h2>
-            <p>El formato del PDF puede ser diferente al esperado o no contener tareas legibles.</p>
-        `;
+        welcomeView.classList.add('hidden');
+        errorView.classList.remove('hidden');
         emptyState.classList.remove('hidden');
     }
     saveToHistory(filename, allRouteGroups, pdfCreationTime);
@@ -543,6 +597,13 @@ function renderTasks() {
                         let tableRows = parsedReporte.map(pr => {
                             const huecosRaw = parseFloat(pr.huecos.replace(',', '.')) || 0;
                             const numHuecosMax = Math.floor(huecosRaw);
+                            let savedCount = getSavedCheck(pr.pedido);
+                            let initialBadges = '';
+                            for (let n = 1; n <= savedCount; n++) {
+                                const isOver = n > numHuecosMax;
+                                initialBadges += `<span class="check-item-badge ${isOver ? 'over-max' : 'verified'}">${n}</span>`;
+                            }
+
                             return `
                                 <tr class="item-main-row clickable-pedido" data-pedido="${pr.pedido}" data-huecos="${numHuecosMax}">
                                     <td class="item-pedido">${pr.pedido}</td>
@@ -550,25 +611,25 @@ function renderTasks() {
                                     <td class="item-destino">${pr.destinoFinal}</td>
                                 </tr>
                                 <tr class="check-row-wrapper">
-                                    <td colspan="3"><div class="pedido-checks-container"></div></td>
+                                    <td colspan="3"><div class="pedido-checks-container">${initialBadges}</div></td>
                                 </tr>
                             `;
                         }).join('');
-                        
-                        const statsBarHTML = isCheckModeEnabled ? `
-                            <div class="reporte-stats-bar">
-                                <div class="stat-item">
-                                    <span class="stat-label">HUECOS TOTALES:</span>
-                                    <span class="stat-value">${totalHuecosTrip}</span>
-                                </div>
-                                <div class="stat-item highlight">
-                                    <span class="stat-label">TOTAL CARGADOS:</span>
-                                    <span class="stat-value trip-loaded-count">0</span>
-                                </div>
+                    
+                    const statsBarHTML = isCheckModeEnabled ? `
+                        <div class="reporte-stats-bar">
+                            <div class="stat-item">
+                                <span class="stat-label">HUECOS TOTALES:</span>
+                                <span class="stat-value">${totalHuecosTrip}</span>
                             </div>
-                        ` : '';
+                            <div class="stat-item highlight">
+                                <span class="stat-label">TOTAL CARGADOS:</span>
+                                <span class="stat-value trip-loaded-count">0</span>
+                            </div>
+                        </div>
+                    ` : '';
 
-                        prodHTML = `<div class="divider"></div><div class="section-label">Detalle de Reporte ${isCheckModeEnabled ? '(Modo Comprobación)' : ''}</div><div class="table-responsive"><table class="products-table reporte-table"><thead><tr><th>Nº PEDIDO</th><th>HUECOS</th><th>DESTINO</th></tr></thead><tbody>${tableRows}</tbody></table></div>${statsBarHTML}`;
+                    prodHTML = `<div class="divider"></div><div class="section-label">Detalle de Reporte ${isCheckModeEnabled ? '(Modo Comprobación)' : ''}</div><div class="table-responsive"><table class="products-table reporte-table"><thead><tr><th>Nº PEDIDO</th><th>HUECOS</th><th>DESTINO</th></tr></thead><tbody>${tableRows}</tbody></table></div>${statsBarHTML}`;
                     }
                 }
             }
@@ -602,6 +663,11 @@ function renderTasks() {
     if (visibleGroups === 0) {
         tasksList.innerHTML = '<p style="text-align: center; color: var(--text-muted); padding: 2rem;">No hay tareas para esta fecha.</p>';
     }
+
+    // Refresh all local counters after rendering
+    document.querySelectorAll('.task-card').forEach(card => {
+        refreshLocalCounter(card);
+    });
 }
 
 
@@ -643,14 +709,19 @@ document.addEventListener('click', (e) => {
     // 1. Delete badge if clicking on it
     if (e.target.classList.contains('check-item-badge')) {
         e.stopPropagation();
+        
+        if (!confirm('¿Seguro que quieres borrar este pallet?')) return;
+        
         const container = e.target.parentElement;
         const row = container.closest('.check-row-wrapper').previousElementSibling;
         const max = parseInt(row.getAttribute('data-huecos')) || 0;
+        const pedido = row.getAttribute('data-pedido');
         
         e.target.remove();
         
         // Re-number remaining badges
-        container.querySelectorAll('.check-item-badge').forEach((badge, index) => {
+        const remaining = container.querySelectorAll('.check-item-badge');
+        remaining.forEach((badge, index) => {
             const num = index + 1;
             badge.textContent = num;
             if (num > max) {
@@ -662,6 +733,7 @@ document.addEventListener('click', (e) => {
             }
         });
         
+        saveCheck(pedido, remaining.length);
         refreshLocalCounter(container.closest('.task-card'));
         return;
     }
@@ -672,6 +744,7 @@ document.addEventListener('click', (e) => {
         const container = row.nextElementSibling.querySelector('.pedido-checks-container');
         if (!container) return;
         
+        const pedido = row.getAttribute('data-pedido');
         const max = parseInt(row.getAttribute('data-huecos')) || 0;
         const currentCount = container.querySelectorAll('.check-item-badge').length;
         const nextNum = currentCount + 1;
@@ -688,6 +761,24 @@ document.addEventListener('click', (e) => {
         
         container.appendChild(badge);
         
+        saveCheck(pedido, nextNum);
         refreshLocalCounter(row.closest('.task-card'));
     }
+});
+
+// Service Worker Registration
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./service-worker.js').catch(err => console.log('SW error:', err));
+    });
+}
+
+// Ads Logic
+setTimeout(() => {
+    const footer = document.getElementById('ad-footer');
+    if (footer) footer.classList.add('show');
+}, 3000);
+
+document.getElementById('btn-close-ad')?.addEventListener('click', () => {
+    document.getElementById('ad-footer')?.classList.remove('show');
 });

@@ -239,6 +239,13 @@ input[type="file"] {
     color: var(--text-muted);
 }
 
+#welcome-view, #error-view {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+}
+
 .empty-icon {
     font-size: 4rem;
     margin-bottom: 1rem;
@@ -663,6 +670,20 @@ input[type="file"] {
     color: var(--tag-descarga-text);
 }
 
+.app-logo {
+    font-size: 1.15rem;
+    font-weight: 900;
+    color: var(--primary-color);
+    margin: 0;
+    cursor: pointer;
+    user-select: none;
+    transition: opacity 0.2s ease;
+}
+
+.app-logo:hover {
+    opacity: 0.7;
+}
+
 .task-time {
     display: inline-flex;
     align-items: center;
@@ -772,4 +793,67 @@ input[type="file"] {
     border-radius: 8px;
     border-left: 3px solid #f59e0b;
     white-space: pre-line;
+}
+
+/* Ad Footer */
+.ad-footer {
+    position: fixed;
+    bottom: -100px;
+    left: 0;
+    right: 0;
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(8px);
+    border-top: 1px solid var(--border-color);
+    padding: 0.75rem 1rem;
+    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.05);
+    transition: bottom 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 2000;
+}
+
+.ad-footer.show {
+    bottom: 0;
+}
+
+.ad-container {
+    max-width: 600px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    position: relative;
+}
+
+.ad-tag {
+    background: var(--primary-color);
+    color: white;
+    font-size: 0.65rem;
+    font-weight: 800;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    text-transform: uppercase;
+}
+
+.ad-text {
+    font-size: 0.85rem;
+    color: var(--text-main);
+    flex: 1;
+    margin: 0;
+}
+
+.ad-text span {
+    color: var(--primary-color);
+    font-weight: 700;
+    text-decoration: underline;
+    cursor: pointer;
+    margin-left: 0.25rem;
+}
+
+.btn-close-ad {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0 0.5rem;
+    line-height: 1;
 }
