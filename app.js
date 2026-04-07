@@ -209,6 +209,18 @@ function parseReporteItems(productos) {
     return parsedReporte;
 }
 
+// Helper to find and link phone numbers in text
+function linkifyPhoneNumbers(text) {
+    if (!text) return text;
+    // Regex for typical Spanish phone numbers (9 digits, maybe spaces, maybe +34)
+    // Avoids matching simple ID numbers by requiring typical mobile (6, 7) or landline (8, 9) starts
+    const phoneRegex = /(?:(?:\+34|0034)[\s.-]?)?([6789]\d{2}[\s.-]?\d{3}[\s.-]?\d{3})/g;
+    return text.replace(phoneRegex, (match) => {
+        const cleanNumber = match.replace(/[\s.-]/g, '').replace(/^00/, '+');
+        return `<a href="tel:${cleanNumber}" class="tel-link">${match}</a>`;
+    });
+}
+
 // Original PDF Viewer
 btnViewPdf.addEventListener('click', () => {
     if (currentPdfUrl) {
@@ -546,8 +558,8 @@ function renderTasks() {
                 <div class="route-info-col client">
                     <div class="route-sub-title">👤 CONTACTO</div>
                     <div class="route-meta-grid" style="grid-template-columns: 1fr;">
-                        <span>Persona contacto: <b>${group.infoCliente.contacto || '---'}</b></span>
-                        ${group.infoCliente.telefono ? `<span>Teléfono: <b>${group.infoCliente.telefono}</b></span>` : ''}
+                        <span>Persona contacto: <b>${linkifyPhoneNumbers(group.infoCliente.contacto) || '---'}</b></span>
+                        ${group.infoCliente.telefono ? `<span>Teléfono: <a href="tel:${group.infoCliente.telefono.replace(/\s+/g, '')}" class="tel-link"><b>${group.infoCliente.telefono}</b></a></span>` : ''}
                         ${group.infoCliente.fecha ? `<span>Fecha servicio: <b>${group.infoCliente.fecha}</b></span>` : ''}
                     </div>
                 </div>
@@ -604,8 +616,10 @@ function renderTasks() {
                                 initialBadges += `<span class="check-item-badge ${isOver ? 'over-max' : 'verified'}">${n}</span>`;
                             }
 
+                            let isCompleted = savedCount > 0 && savedCount >= numHuecosMax;
+
                             return `
-                                <tr class="item-main-row clickable-pedido" data-pedido="${pr.pedido}" data-huecos="${numHuecosMax}">
+                                <tr class="item-main-row clickable-pedido ${isCompleted ? 'row-completed' : ''}" data-pedido="${pr.pedido}" data-huecos="${numHuecosMax}">
                                     <td class="item-pedido">${pr.pedido}</td>
                                     <td class="item-huecos">${pr.huecos}</td>
                                     <td class="item-destino">${pr.destinoFinal}</td>
@@ -639,8 +653,11 @@ function renderTasks() {
             
             let obsHTML = '';
             if (task.observaciones) {
-                obsHTML = `<div class="divider"></div><div class="section-label">Observaciones</div><div class="task-observations">${task.observaciones}</div>`;
+                obsHTML = `<div class="divider"></div><div class="section-label">Observaciones</div><div class="task-observations">${linkifyPhoneNumbers(task.observaciones)}</div>`;
             }
+
+            const fullAddress = `${task.destino} ${task.direccion}`.trim();
+            const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fullAddress)}`;
 
             el.innerHTML = `
                 <div class="task-header">
@@ -650,8 +667,15 @@ function renderTasks() {
                     </div>
                     <div class="task-time"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg><span>${task.hora}</span></div>
                 </div>
-                <div class="task-detail destination">${task.destino}</div>
-                <div class="task-detail address"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>${task.direccion || 'No especificada'}</div>
+                <div class="task-detail destination">${linkifyPhoneNumbers(task.destino)}</div>
+                <div class="task-detail address">
+                    ${task.direccion ? `
+                        <a href="${mapsUrl}" target="_blank" class="maps-link" title="Abrir en Google Maps">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                            <span class="address-text">${linkifyPhoneNumbers(task.direccion)}</span>
+                        </a>
+                    ` : 'No especificada'}
+                </div>
                 ${prodHTML}${obsHTML}
             `;
             sec.appendChild(el);
@@ -734,6 +758,14 @@ document.addEventListener('click', (e) => {
         });
         
         saveCheck(pedido, remaining.length);
+        
+        // Update row status
+        if (remaining.length < max) {
+            row.classList.remove('row-completed');
+        } else {
+            row.classList.add('row-completed');
+        }
+
         refreshLocalCounter(container.closest('.task-card'));
         return;
     }
@@ -762,6 +794,14 @@ document.addEventListener('click', (e) => {
         container.appendChild(badge);
         
         saveCheck(pedido, nextNum);
+
+        // Update row status
+        if (nextNum >= max) {
+            row.classList.add('row-completed');
+        } else {
+            row.classList.remove('row-completed');
+        }
+
         refreshLocalCounter(row.closest('.task-card'));
     }
 });

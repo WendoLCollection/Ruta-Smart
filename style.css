@@ -8,6 +8,8 @@
     --text-main: #0f172a;
     --text-muted: #64748b;
     --border-color: #e2e8f0;
+    --tel-color: #2563eb;
+    --tel-hover: #1d4ed8;
     
     --tag-carga-bg: #d1fae5;
     --tag-carga-text: #065f46;
@@ -530,6 +532,16 @@ input[type="file"] {
     font-size: 0.9rem;
     padding: 0.75rem 0.5rem 0.25rem 0.5rem;
     border-bottom: none !important;
+    transition: background-color 0.3s ease;
+}
+
+.item-main-row.row-completed td {
+    background-color: #d1fae5 !important;
+    color: #065f46 !important;
+}
+
+.item-main-row.row-completed .item-pedido {
+    color: #059669 !important;
 }
 
 .item-pedido { 
@@ -793,6 +805,40 @@ input[type="file"] {
     border-radius: 8px;
     border-left: 3px solid #f59e0b;
     white-space: pre-line;
+}
+
+.tel-link {
+    color: var(--tel-color);
+    text-decoration: underline;
+    font-weight: 700;
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+.tel-link:hover {
+    color: var(--tel-hover);
+}
+
+.tel-link b {
+    color: inherit;
+}
+
+.maps-link {
+    color: var(--tel-color);
+    text-decoration: none;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.35rem;
+    transition: opacity 0.2s;
+}
+
+.maps-link:active {
+    opacity: 0.7;
+}
+
+.maps-link .address-text {
+    text-decoration: underline;
+    font-weight: 600;
 }
 
 /* Ad Footer */
