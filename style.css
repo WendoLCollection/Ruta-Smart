@@ -353,6 +353,24 @@ input[type="file"] {
     color: var(--text-muted);
 }
 
+.btn-delete-history {
+    background: transparent;
+    border: none;
+    font-size: 1.5rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    padding: 0 0.5rem;
+    line-height: 1;
+    transition: color 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-delete-history:hover {
+    color: #ef4444;
+}
+
 .empty-state p {
     font-size: 0.875rem;
     max-width: 250px;
@@ -902,4 +920,20 @@ input[type="file"] {
     cursor: pointer;
     padding: 0 0.5rem;
     line-height: 1;
+}
+
+/* Day Change Animation */
+@keyframes slideFadeIn {
+    0% {
+        opacity: 0;
+        transform: translateY(15px);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.tasks-list.animate-update {
+    animation: slideFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }

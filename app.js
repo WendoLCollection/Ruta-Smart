@@ -26,6 +26,49 @@ let currentPdfUrl = null;
 let currentPdfFilename = '';
 let isCheckModeEnabled = false;
 
+// IndexedDB for Original PDFs
+const DB_NAME = 'RutaSmartDB';
+const STORE_NAME = 'pdf_files';
+
+function initDB() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, 1);
+        request.onupgradeneeded = (e) => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains(STORE_NAME)) {
+                db.createObjectStore(STORE_NAME);
+            }
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+function savePdfToDB(filename, fileBlob) {
+    initDB().then(db => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        tx.objectStore(STORE_NAME).put(fileBlob, filename);
+    }).catch(console.error);
+}
+
+function getPdfFromDB(filename) {
+    return new Promise((resolve, reject) => {
+        initDB().then(db => {
+            const tx = db.transaction(STORE_NAME, 'readonly');
+            const req = tx.objectStore(STORE_NAME).get(filename);
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => reject(req.error);
+        }).catch(reject);
+    });
+}
+
+function deletePdfFromDB(filename) {
+    initDB().then(db => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        tx.objectStore(STORE_NAME).delete(filename);
+    }).catch(console.error);
+}
+
 // LocalStorage for Checks
 function saveCheck(pedido, count) {
     if (!currentPdfFilename) return;
@@ -112,6 +155,9 @@ function renderHistory() {
                 <span class="history-item-name">${item.filename}</span>
                 <span class="history-item-time">${item.creationTime || 'Sin fecha de creación'}</span>
             </div>
+            <button class="btn-delete-history" data-idx="${idx}" title="Borrar carga">
+                &times;
+            </button>
         </div>
     `).join('');
     
@@ -147,7 +193,29 @@ function renderHistory() {
             }
             
             pdfTimestampEl.textContent = pdfCreationTime ? `(Actualizado: ${pdfCreationTime})` : "";
+            
+            // Try to load Original PDF from DB
+            getPdfFromDB(currentPdfFilename).then(blob => {
+                if (currentPdfUrl) URL.revokeObjectURL(currentPdfUrl);
+                currentPdfUrl = blob ? URL.createObjectURL(blob) : null;
+            });
+
             renderTasks();
+        });
+    });
+
+    // Handle delete button clicks
+    document.querySelectorAll('.btn-delete-history').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const idx = btn.getAttribute('data-idx');
+            const item = history[idx];
+            if (confirm(`¿Seguro que quieres borrar la carga "${item.filename}" de recientes?`)) {
+                deletePdfFromDB(item.filename);
+                history.splice(idx, 1);
+                localStorage.setItem('ruta_smart_history', JSON.stringify(history));
+                renderHistory();
+            }
         });
     });
 }
@@ -230,6 +298,8 @@ btnViewPdf.addEventListener('click', () => {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+    } else {
+        alert('El archivo PDF original no está disponible. Por favor, vuelve a cargarlo.');
     }
 });
 
@@ -248,6 +318,7 @@ uploadBtn.addEventListener('change', async (e) => {
     // Original PDF viewing logic
     if (currentPdfUrl) URL.revokeObjectURL(currentPdfUrl);
     currentPdfUrl = URL.createObjectURL(file);
+    savePdfToDB(file.name, file);
     
     // UI state for tools
     btnExpandTools.classList.remove('hidden');
@@ -519,6 +590,15 @@ function renderFilters() {
 
 function renderTasks() {
     const selectedDate = dateFilter.value;
+    
+    // Scroll to top
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    // Day change transition
+    tasksList.classList.remove('animate-update');
+    void tasksList.offsetWidth; // Trigger reflow
+    tasksList.classList.add('animate-update');
+    
     tasksList.innerHTML = '';
     
     // Calculate global daily totals for summary bar
@@ -630,18 +710,20 @@ function renderTasks() {
                             `;
                         }).join('');
                     
-                    const statsBarHTML = isCheckModeEnabled ? `
+                    const statsBarHTML = `
                         <div class="reporte-stats-bar">
                             <div class="stat-item">
                                 <span class="stat-label">HUECOS TOTALES:</span>
                                 <span class="stat-value">${totalHuecosTrip}</span>
                             </div>
+                            ${isCheckModeEnabled ? `
                             <div class="stat-item highlight">
                                 <span class="stat-label">TOTAL CARGADOS:</span>
                                 <span class="stat-value trip-loaded-count">0</span>
                             </div>
+                            ` : ''}
                         </div>
-                    ` : '';
+                    `;
 
                     prodHTML = `<div class="divider"></div><div class="section-label">Detalle de Reporte ${isCheckModeEnabled ? '(Modo Comprobación)' : ''}</div><div class="table-responsive"><table class="products-table reporte-table"><thead><tr><th>Nº PEDIDO</th><th>HUECOS</th><th>DESTINO</th></tr></thead><tbody>${tableRows}</tbody></table></div>${statsBarHTML}`;
                     }
