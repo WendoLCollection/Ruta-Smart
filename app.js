@@ -9,6 +9,7 @@ const tasksList = document.getElementById('tasks-list');
 const dateFilter = document.getElementById('date-filter');
 const headerDateSelector = document.getElementById('header-date-selector');
 const metadataBar = document.getElementById('metadata-bar');
+const metadataTitleEl = document.getElementById('metadata-title');
 const pdfTimestampEl = document.getElementById('pdf-timestamp');
 const btnViewPdf = document.getElementById('btn-view-pdf');
 const btnHome = document.getElementById('btn-home');
@@ -17,6 +18,18 @@ const headerTools = document.getElementById('header-tools');
 const btnExpandTools = document.getElementById('btn-expand-tools');
 const historyContainer = document.getElementById('history-container');
 const historyList = document.getElementById('history-list');
+
+// URL Feature Elements
+const btnOpenUrl = document.getElementById('btn-open-url');
+const btnWelcomeUrl = document.getElementById('btn-welcome-url');
+const btnRefreshUrl = document.getElementById('btn-refresh-url');
+const urlModal = document.getElementById('url-modal');
+const btnCloseModal = document.getElementById('btn-close-modal');
+const btnSubmitUrl = document.getElementById('btn-submit-url');
+const btnClearUrl = document.getElementById('btn-clear-url');
+const inputPdfUrl = document.getElementById('input-pdf-url');
+const urlSavedInfo = document.getElementById('url-saved-info');
+const savedUrlLink = document.getElementById('saved-url-link');
 
 let allRouteGroups = [];
 let availableDates = [];
@@ -116,7 +129,128 @@ btnHome.addEventListener('click', () => {
     headerTools.classList.add('hidden');
     
     renderHistory();
+    updateUrlUi();
 });
+
+// URL UI and Management
+function updateUrlUi() {
+    const savedUrl = localStorage.getItem('ruta_smart_live_url');
+    if (savedUrl) {
+        if (btnRefreshUrl) btnRefreshUrl.classList.remove('hidden');
+        if (urlSavedInfo) {
+            urlSavedInfo.classList.remove('hidden');
+            if (savedUrlLink) {
+                savedUrlLink.textContent = savedUrl;
+                savedUrlLink.href = savedUrl;
+            }
+        }
+        if (inputPdfUrl) inputPdfUrl.value = savedUrl;
+        if (btnClearUrl) btnClearUrl.classList.remove('hidden');
+    } else {
+        if (btnRefreshUrl) btnRefreshUrl.classList.add('hidden');
+        if (urlSavedInfo) urlSavedInfo.classList.add('hidden');
+        if (inputPdfUrl) inputPdfUrl.value = '';
+        if (btnClearUrl) btnClearUrl.classList.add('hidden');
+    }
+}
+
+function openUrlModal() {
+    updateUrlUi();
+    if (urlModal) {
+        urlModal.classList.remove('hidden');
+        setTimeout(() => inputPdfUrl && inputPdfUrl.focus(), 100);
+    }
+}
+
+function closeUrlModal() {
+    if (urlModal) urlModal.classList.add('hidden');
+}
+
+btnOpenUrl?.addEventListener('click', openUrlModal);
+btnWelcomeUrl?.addEventListener('click', openUrlModal);
+btnCloseModal?.addEventListener('click', closeUrlModal);
+urlModal?.addEventListener('click', (e) => {
+    if (e.target === urlModal) closeUrlModal();
+});
+
+btnClearUrl?.addEventListener('click', () => {
+    if (confirm('¿Deseas eliminar el enlace web guardado?')) {
+        localStorage.removeItem('ruta_smart_live_url');
+        updateUrlUi();
+    }
+});
+
+btnSubmitUrl?.addEventListener('click', async () => {
+    const url = inputPdfUrl?.value.trim();
+    if (!url) {
+        alert('Por favor, introduce un enlace web válido.');
+        return;
+    }
+    closeUrlModal();
+    await loadPdfFromUrl(url);
+});
+
+btnRefreshUrl?.addEventListener('click', async () => {
+    const savedUrl = localStorage.getItem('ruta_smart_live_url');
+    if (savedUrl) {
+        await loadPdfFromUrl(savedUrl);
+    } else {
+        openUrlModal();
+    }
+});
+
+// Fetch PDF from URL
+async function loadPdfFromUrl(url) {
+    loader.classList.remove('hidden');
+    const loaderP = loader.querySelector('p');
+    if (loaderP) loaderP.textContent = 'Descargando hoja de ruta...';
+
+    emptyState.classList.add('hidden');
+    tasksContainer.classList.add('hidden');
+    headerDateSelector.classList.add('hidden');
+    metadataBar.classList.add('hidden');
+
+    try {
+        let response = null;
+        let blob = null;
+        
+        // Intentar descarga directa con cache busting
+        const cacheBustUrl = url + (url.includes('?') ? '&' : '?') + '_t=' + Date.now();
+        try {
+            response = await fetch(cacheBustUrl);
+            if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+            blob = await response.blob();
+        } catch (fetchErr) {
+            console.warn('Descarga directa no permitida (CORS o red), probando vía proxy...', fetchErr);
+            // Intentar a través de proxy CORS
+            try {
+                const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+                response = await fetch(proxyUrl);
+                if (!response.ok) throw new Error(`Proxy error ${response.status}`);
+                blob = await response.blob();
+            } catch (proxyErr) {
+                console.error('Fallo también con proxy:', proxyErr);
+                throw fetchErr;
+            }
+        }
+
+        localStorage.setItem('ruta_smart_live_url', url);
+        updateUrlUi();
+
+        const arrayBuffer = await blob.arrayBuffer();
+        await processPdfArrayBuffer(arrayBuffer, 'Ruta_Actualizada.pdf', blob);
+    } catch (error) {
+        console.error('Error al descargar PDF:', error);
+        alert('No se pudo descargar el archivo automáticamente desde el enlace.\n\nEs posible que requiera contraseña, esté en una red interna o tenga bloqueos de seguridad (CORS).\n\nPuedes abrir el enlace en tu navegador, guardarlo en tu móvil y cargarlo con el botón "Cargar".');
+        emptyState.classList.remove('hidden');
+    } finally {
+        loader.classList.add('hidden');
+        if (loaderP) loaderP.textContent = 'Procesando documento...';
+    }
+}
+
+// Initial URL Check
+updateUrlUi();
 
 // History Logic
 function saveToHistory(filename, routeGroups, creationTime) {
@@ -181,6 +315,10 @@ function renderHistory() {
             // Recalculate available dates for this specific data
             const allTaskDates = allRouteGroups.flatMap(g => g.tasks.map(t => t.fecha));
             const datesSet = new Set(allTaskDates.filter(f => f));
+            const now = new Date();
+            const todayStr = String(now.getDate()).padStart(2, '0') + '/' + String(now.getMonth()+1).padStart(2, '0') + '/' + now.getFullYear();
+            datesSet.add(todayStr);
+
             availableDates = Array.from(datesSet).sort((a,b) => {
                 const [d1,m1,y1] = a.split('/');
                 const [d2,m2,y2] = b.split('/');
@@ -188,11 +326,13 @@ function renderHistory() {
             });
 
             renderFilters();
-            if (availableDates.length > 0) {
+            if (availableDates.includes(todayStr)) {
+                dateFilter.value = todayStr;
+            } else if (availableDates.length > 0) {
                 dateFilter.value = availableDates[0];
             }
             
-            pdfTimestampEl.textContent = pdfCreationTime ? `(Actualizado: ${pdfCreationTime})` : "";
+            pdfTimestampEl.textContent = (pdfCreationTime ? `(Actualizado: ${pdfCreationTime})` : "") + ` • Hoy: ${todayStr}`;
             
             // Try to load Original PDF from DB
             getPdfFromDB(currentPdfFilename).then(blob => {
@@ -200,7 +340,7 @@ function renderHistory() {
                 currentPdfUrl = blob ? URL.createObjectURL(blob) : null;
             });
 
-            renderTasks();
+            renderTasks(true);
         });
     });
 
@@ -233,10 +373,10 @@ btnExpandTools.addEventListener('click', () => {
 btnToggleCheck.addEventListener('click', () => {
     isCheckModeEnabled = !isCheckModeEnabled;
     btnToggleCheck.classList.toggle('active', isCheckModeEnabled);
-    renderTasks();
+    renderTasks(false); // El modo check NO debe mover la página
 });
 
-// Helper to parse report products into structured data
+// Helper to parse report products into structured data (legacy / report format)
 function parseReporteItems(productos) {
     let parsedReporte = [];
     let pIdx = 0;
@@ -281,7 +421,6 @@ function parseReporteItems(productos) {
 function linkifyPhoneNumbers(text) {
     if (!text) return text;
     // Regex for typical Spanish phone numbers (9 digits, maybe spaces, maybe +34)
-    // Avoids matching simple ID numbers by requiring typical mobile (6, 7) or landline (8, 9) starts
     const phoneRegex = /(?:(?:\+34|0034)[\s.-]?)?([6789]\d{2}[\s.-]?\d{3}[\s.-]?\d{3})/g;
     return text.replace(phoneRegex, (match) => {
         const cleanNumber = match.replace(/[\s.-]/g, '').replace(/^00/, '+');
@@ -303,22 +442,33 @@ btnViewPdf.addEventListener('click', () => {
     }
 });
 
-// Request Notifications Permission - Temporarily Disabled
-/*
-if ("Notification" in window && Notification.permission !== "denied" && Notification.permission !== "granted") {
-    Notification.requestPermission();
-}
-*/
-
-// Events
+// File upload event
 uploadBtn.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    // Original PDF viewing logic
+    try {
+        const arrayBuffer = await file.arrayBuffer();
+        await processPdfArrayBuffer(arrayBuffer, file.name, file);
+    } catch (err) {
+        console.error("Error reading PDF file:", err);
+        alert('Hubo un error al leer el archivo. Inténtalo de nuevo.');
+    } finally {
+        uploadBtn.value = ''; // Reset input to allow re-uploading the same file
+    }
+});
+
+// Process ArrayBuffer
+async function processPdfArrayBuffer(arrayBuffer, filename, fileBlob = null) {
     if (currentPdfUrl) URL.revokeObjectURL(currentPdfUrl);
-    currentPdfUrl = URL.createObjectURL(file);
-    savePdfToDB(file.name, file);
+    if (fileBlob) {
+        currentPdfUrl = URL.createObjectURL(fileBlob);
+        savePdfToDB(filename, fileBlob);
+    } else {
+        const blob = new Blob([arrayBuffer], { type: 'application/pdf' });
+        currentPdfUrl = URL.createObjectURL(blob);
+        savePdfToDB(filename, blob);
+    }
     
     // UI state for tools
     btnExpandTools.classList.remove('hidden');
@@ -326,7 +476,7 @@ uploadBtn.addEventListener('change', async (e) => {
     headerTools.classList.remove('hidden');
     headerTools.classList.add('collapsed');
     
-    btnToggleCheck.classList.remove('active'); // Start with inactive by default
+    btnToggleCheck.classList.remove('active');
     isCheckModeEnabled = false;
 
     loader.classList.remove('hidden');
@@ -337,19 +487,17 @@ uploadBtn.addEventListener('change', async (e) => {
     pdfCreationTime = '';
 
     try {
-        const arrayBuffer = await file.arrayBuffer();
         const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
         let fullText = '';
         
         for (let i = 1; i <= pdf.numPages; i++) {
             const page = await pdf.getPage(i);
             const textContent = await page.getTextContent();
-            // join items
             const pageText = textContent.items.map(item => item.str).join('\n');
             fullText += pageText + '\n\n--- PAGE BREAK ---\n\n';
         }
 
-        parsePDFText(fullText, file.name);
+        parsePDFText(fullText, filename);
     } catch (error) {
         console.error("Error reading PDF: ", error);
         alert('Hubo un error al leer el documento PDF. Por favor, asegúrate de que es un archivo válido.');
@@ -357,33 +505,332 @@ uploadBtn.addEventListener('change', async (e) => {
     } finally {
         loader.classList.add('hidden');
     }
-});
+}
 
-dateFilter.addEventListener('change', renderTasks);
+dateFilter.addEventListener('change', () => renderTasks(true));
 
-// Logic
-function parsePDFText(text, filename) {
+// Main Parsing Logic
+function parsePDFText(fullText, filename) {
     currentPdfFilename = filename;
-    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-    allRouteGroups = [];
     
+    // Detect whether document is in NEW FORMAT or OLD FORMAT
+    const isNewFormat = fullText.includes('DETALLES RUTA TRANSPORTISTA') || 
+                        (fullText.includes('DETALLE DE LA RUTA') && fullText.includes('AGRUPACIÓN'));
+
+    // Extract creation timestamp
+    const timeMatch = fullText.match(/(\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2})/);
+    if (timeMatch) {
+        pdfCreationTime = timeMatch[1];
+    } else {
+        pdfCreationTime = '';
+    }
+
+    if (isNewFormat) {
+        allRouteGroups = parseNewFormat(fullText);
+        if (metadataTitleEl) metadataTitleEl.textContent = 'DETALLES RUTA TRANSPORTISTA';
+    } else {
+        allRouteGroups = parseOldFormat(fullText);
+        if (metadataTitleEl) metadataTitleEl.textContent = 'DETALLE RUTAS TRANSPORTISTA';
+    }
+
+    if (allRouteGroups.length > 0) {
+        welcomeView.classList.add('hidden');
+        errorView.classList.add('hidden');
+        emptyState.classList.add('hidden');
+
+        // Populate Filters
+        const allTaskDates = allRouteGroups.flatMap(g => g.tasks.map(t => t.fecha));
+        const datesSet = new Set(allTaskDates.filter(f => f));
+        
+        // Incluir siempre la fecha de hoy
+        const now = new Date();
+        const todayStr = String(now.getDate()).padStart(2, '0') + '/' + String(now.getMonth()+1).padStart(2, '0') + '/' + now.getFullYear();
+        datesSet.add(todayStr);
+
+        availableDates = Array.from(datesSet).sort((a,b) => {
+            const [d1,m1,y1] = a.split('/');
+            const [d2,m2,y2] = b.split('/');
+            return new Date(y1,m1-1,d1) - new Date(y2,m2-1,d2);
+        });
+
+        renderFilters();
+        
+        if (availableDates.includes(todayStr)) {
+            dateFilter.value = todayStr;
+        } else if (availableDates.length > 0) {
+            dateFilter.value = availableDates[0];
+        }
+        
+        headerDateSelector.classList.remove('hidden');
+        metadataBar.classList.remove('hidden');
+        pdfTimestampEl.textContent = (pdfCreationTime ? `(Actualizado: ${pdfCreationTime})` : '') + ` • Hoy: ${todayStr}`;
+        tasksContainer.classList.remove('hidden');
+        renderTasks(true);
+    } else {
+        headerDateSelector.classList.add('hidden');
+        metadataBar.classList.add('hidden');
+        welcomeView.classList.add('hidden');
+        errorView.classList.remove('hidden');
+        emptyState.classList.remove('hidden');
+    }
+    saveToHistory(filename, allRouteGroups, pdfCreationTime);
+}
+
+// Parser for NEW FORMAT ("DETALLES RUTA TRANSPORTISTA")
+function parseNewFormat(fullText) {
+    const rawPages = fullText.split('--- PAGE BREAK ---');
+    let groups = [];
+    const suministrosList = ['CONGELADO', 'REFRIGERADO', 'SECOS', 'PESCADO', 'CARNE', 'ENVASES', 'FRUTA', 'PAN'];
+
+    rawPages.forEach((pageStr) => {
+        const lines = pageStr.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+        if (lines.length === 0) return;
+        if (!lines.some(l => l.includes('VIAJE:') || l.includes('DETALLE DE LA RUTA'))) return;
+
+        const group = {
+            viajeId: '',
+            tipoVehiculo: '',
+            tamanoVehiculo: '',
+            infoTransportista: { empresa: '', vehiculo: '', remolque: '', telefono: '' },
+            infoCliente: { contacto: '', telefono: '', fecha: '' },
+            tasks: []
+        };
+
+        let i = 0;
+        // 1. Header parsing
+        while (i < lines.length) {
+            const line = lines[i];
+            if (line === 'DETALLE DE LA RUTA') break;
+
+            if (line === 'EMPRESA DE TRANSPORTES' || line === 'EMPRESA DE TRANSPORTES:') {
+                if (i + 1 < lines.length && !lines[i+1].includes(':')) {
+                    group.infoTransportista.empresa = lines[++i];
+                }
+            } else if (line.startsWith('EMPRESA DE TRANSPORTES:')) {
+                group.infoTransportista.empresa = line.replace('EMPRESA DE TRANSPORTES:', '').trim();
+            } else if (line.startsWith('VEHICULO:')) {
+                const val = line.replace('VEHICULO:', '').trim();
+                group.infoTransportista.vehiculo = val || (lines[i+1] && !lines[i+1].includes(':') ? lines[++i] : '');
+            } else if (line.startsWith('MAT. REMOLQ.:')) {
+                const val = line.replace('MAT. REMOLQ.:', '').trim();
+                group.infoTransportista.remolque = val || (lines[i+1] && !lines[i+1].includes(':') ? lines[++i] : '');
+            } else if (line.startsWith('TELÉFONO:') || line === 'TELÉFONO:') {
+                const val = line.replace('TELÉFONO:', '').trim();
+                const phoneVal = val || (lines[i+1] && /^\d{9}$/.test(lines[i+1]) ? lines[++i] : '');
+                if (phoneVal) {
+                    if (!group.infoTransportista.telefono) group.infoTransportista.telefono = phoneVal;
+                    else group.infoCliente.telefono = phoneVal;
+                }
+            } else if (line.startsWith('PERSONA CONTACTO:')) {
+                const val = line.replace('PERSONA CONTACTO:', '').trim();
+                group.infoCliente.contacto = val || (lines[i+1] && !lines[i+1].includes(':') ? lines[++i] : '');
+            } else if (line.startsWith('VIAJE:')) {
+                const val = line.replace('VIAJE:', '').trim();
+                group.viajeId = val || (lines[i+1] && !lines[i+1].includes(':') ? lines[++i] : '');
+            } else if (line.startsWith('TAMAÑO:')) {
+                const val = line.replace('TAMAÑO:', '').trim();
+                group.tamanoVehiculo = val || (lines[i+1] && !lines[i+1].includes(':') ? lines[++i] : '');
+            } else if (line.startsWith('TIPO:')) {
+                const val = line.replace('TIPO:', '').trim();
+                group.tipoVehiculo = val || (lines[i+1] && !lines[i+1].includes(':') ? lines[++i] : '');
+            }
+            i++;
+        }
+
+        // 2. Observations at page level
+        let pageObservaciones = '';
+        for (let k = 0; k < lines.length; k++) {
+            if (lines[k].startsWith('OBSERVACIONES:')) {
+                let obsParts = [lines[k].replace('OBSERVACIONES:', '').trim()];
+                for (let m = k + 1; m < lines.length; m++) {
+                    if (lines[m].startsWith('===') || lines[m].includes('--- PAGE BREAK ---')) break;
+                    obsParts.push(lines[m]);
+                }
+                pageObservaciones = obsParts.join(' ').trim();
+                break;
+            }
+        }
+
+        // 3. Skip to first CARGA or DESCARGA
+        while (i < lines.length) {
+            if (lines[i] === 'CARGA' || lines[i] === 'DESCARGA') break;
+            i++;
+        }
+
+        // 4. Tasks Parsing
+        while (i < lines.length) {
+            const line = lines[i];
+            if (line.startsWith('OBSERVACIONES:')) break;
+
+            if (line === 'CARGA' || line === 'DESCARGA') {
+                const mainTipo = line;
+                let subTipo = '';
+                let nextIdx = i + 1;
+
+                if (nextIdx < lines.length && ['ALMACÉN', 'TIENDA', 'ENVASES'].includes(lines[nextIdx])) {
+                    subTipo = lines[nextIdx];
+                    nextIdx++;
+                }
+                const fullTipo = subTipo ? `${mainTipo} ${subTipo}` : mainTipo;
+
+                let fecha = '';
+                let hora = '';
+                while (nextIdx < lines.length && !fecha) {
+                    if (/^\d{2}\/\d{2}\/\d{4}$/.test(lines[nextIdx])) {
+                        fecha = lines[nextIdx++];
+                        if (nextIdx < lines.length && /^\d{2}:\d{2}$/.test(lines[nextIdx])) {
+                            hora = lines[nextIdx++];
+                        }
+                        break;
+                    }
+                    nextIdx++;
+                }
+
+                // Origin / Destination lines until MERCADONA or next task
+                let origDestLines = [];
+                while (nextIdx < lines.length) {
+                    if (lines[nextIdx] === 'MERCADONA' || lines[nextIdx] === 'CARGA' || lines[nextIdx] === 'DESCARGA' || lines[nextIdx].startsWith('OBSERVACIONES:')) {
+                        break;
+                    }
+                    origDestLines.push(lines[nextIdx]);
+                    nextIdx++;
+                }
+
+                const origDestFull = origDestLines.join(' ');
+                let destinoName = '';
+                let direccion = '';
+                const commaParts = origDestFull.split(',').map(s => s.trim());
+                if (commaParts.length >= 2) {
+                    destinoName = `${commaParts[0]}, ${commaParts[1]}`;
+                    direccion = commaParts.slice(2).join(', ').trim();
+                } else {
+                    destinoName = origDestFull;
+                }
+
+                // Item lines
+                let itemLines = [];
+                while (nextIdx < lines.length) {
+                    if (lines[nextIdx] === 'CARGA' || lines[nextIdx] === 'DESCARGA' || lines[nextIdx].startsWith('OBSERVACIONES:')) {
+                        break;
+                    }
+                    itemLines.push(lines[nextIdx]);
+                    nextIdx++;
+                }
+
+                let items = [];
+                let mercIdxs = [];
+                itemLines.forEach((l, idx) => {
+                    if (l === 'MERCADONA') mercIdxs.push(idx);
+                });
+
+                if (mercIdxs.length > 0) {
+                    for (let m = 0; m < mercIdxs.length; m++) {
+                        const start = mercIdxs[m] + 1;
+                        const end = (m + 1 < mercIdxs.length) ? mercIdxs[m + 1] : itemLines.length;
+                        const block = itemLines.slice(start, end);
+
+                        let numberIdxs = [];
+                        block.forEach((bl, bIdx) => {
+                            if (/^\d+,\d{2}$/.test(bl)) numberIdxs.push(bIdx);
+                        });
+
+                        if (numberIdxs.length >= 1) {
+                            const hIdx = numberIdxs[0];
+                            const huecosVal = block[hIdx];
+                            const pesoVal = (hIdx + 1 < block.length && /^[\d.,]+$/.test(block[hIdx + 1])) ? block[hIdx + 1] : '';
+                            const preText = block.slice(0, hIdx).join(' ');
+                            const postStart = pesoVal ? hIdx + 2 : hIdx + 1;
+                            const postText = block.slice(postStart).join(' ');
+
+                            let agrupacion = preText;
+                            let suministro = '';
+                            for (const sum of suministrosList) {
+                                if (preText.toUpperCase().endsWith(sum)) {
+                                    suministro = sum;
+                                    agrupacion = preText.slice(0, preText.length - sum.length).trim();
+                                    break;
+                                }
+                            }
+                            if (!suministro && suministrosList.includes(preText.toUpperCase())) {
+                                suministro = preText.toUpperCase();
+                            }
+
+                            // If mainTipo is DESCARGA, preText actually contains origin & destination
+                            let origen = '';
+                            let destinoFinal = '';
+                            let targetPost = (mainTipo === 'DESCARGA' && !postText) ? preText : postText;
+                            targetPost = targetPost.replace(/\s+\d+,\d{2}(\s+[\d.,]+)?$/, '').trim();
+                            const postMatch = targetPost.match(/^(.+?\b\d{3,5})\s+(.+)$/);
+                            if (postMatch) {
+                                origen = postMatch[1].trim();
+                                destinoFinal = postMatch[2].trim();
+                            } else {
+                                destinoFinal = targetPost;
+                            }
+
+                            items.push({
+                                agrupacion: agrupacion || (mainTipo === 'DESCARGA' ? 'DESCARGA COMPLETA' : 'GENERAL'),
+                                suministro: suministro || '-',
+                                huecos: huecosVal,
+                                peso: pesoVal ? `${pesoVal} kg` : '-',
+                                origen: origen,
+                                destino: destinoFinal
+                            });
+                        }
+                    }
+                }
+
+                if (fecha && !group.infoCliente.fecha) {
+                    group.infoCliente.fecha = fecha;
+                }
+
+                group.tasks.push({
+                    tipo: fullTipo,
+                    mainTipo: mainTipo,
+                    subTipo: subTipo,
+                    categoria: 'tienda_nueva',
+                    fecha: fecha,
+                    hora: hora,
+                    destino: destinoName,
+                    direccion: direccion,
+                    items: items,
+                    observaciones: pageObservaciones
+                });
+
+                i = nextIdx;
+                continue;
+            }
+            i++;
+        }
+
+        if (group.tasks.length > 0) {
+            groups.push(group);
+        }
+    });
+
+    return groups;
+}
+
+// Parser for OLD FORMAT (legacy "COMPOSICIÓN" or "DETALLE RUTAS TRANSPORTISTA")
+function parseOldFormat(fullText) {
+    const lines = fullText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    let allRouteGroups = [];
     let i = 0;
-    let currentCategoria = 'tienda'; // Default
+    let currentCategoria = 'tienda';
     let currentGroup = null;
 
     function createNewGroup() {
         return {
-            infoTransportista: { empresa: '', vehiculo: '', remolque: '' },
+            viajeId: '',
+            infoTransportista: { empresa: '', vehiculo: '', remolque: '', telefono: '' },
             infoCliente: { contacto: '', telefono: '', fecha: '' },
             tasks: []
         };
     }
 
-    // Helper: extract value from "LABEL: value" or from the next non-label line
     function getVal(label) {
         const sameLine = lines[i].replace(label, '').trim();
         if (sameLine) return sameLine;
-        // Look at next line, skip if it looks like another label (contains ":")
         const next = lines[i+1] || '';
         if (next && !next.includes(':') && !next.startsWith('---')) return next;
         return '';
@@ -391,41 +838,28 @@ function parsePDFText(text, filename) {
 
     while (i < lines.length) {
         let line = lines[i].trim();
-        
-        // ── New group starts at VIAJE: ──
-        if (line === 'VIAJE:') {
+
+        if (line.startsWith('VIAJE:')) {
             if (currentGroup && currentGroup.tasks.length > 0) {
                 allRouteGroups.push(currentGroup);
             }
             currentGroup = createNewGroup();
+            currentGroup.viajeId = getVal('VIAJE:');
         }
-        
+
         if (!currentGroup) currentGroup = createNewGroup();
 
-        // ── PDF Creation Timestamp (from DETALLE RUTAS TRANSPORTISTA) ──
-        if (line.includes('DETALLE RUTAS TRANSPORTISTA')) {
-            for (let k = i + 1; k < i + 5 && k < lines.length; k++) {
-                const tsMatch = lines[k].match(/(\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2})/);
-                if (tsMatch) {
-                    pdfCreationTime = tsMatch[1];
-                    break;
-                }
-            }
-        }
-
-        // ── Metadata extraction ──
-        if (line.startsWith('EMPRESA DE TRANSPORTES:')) {
-            currentGroup.infoTransportista.empresa = getVal('EMPRESA DE TRANSPORTES:');
+        if (line.startsWith('EMPRESA DE TRANSPORTES:') || line === 'EMPRESA DE TRANSPORTES') {
+            currentGroup.infoTransportista.empresa = getVal(line.includes(':') ? 'EMPRESA DE TRANSPORTES:' : 'EMPRESA DE TRANSPORTES');
         } else if (line.startsWith('VEHICULO:')) {
             currentGroup.infoTransportista.vehiculo = getVal('VEHICULO:');
         } else if (line.startsWith('MAT. REMOLQ.:')) {
             currentGroup.infoTransportista.remolque = getVal('MAT. REMOLQ.:');
-        } else if (line.startsWith('TELÉFONO:')) {
-            // TELÉFONO: appears twice in some PDFs (first empty, second with value)
-            // Only save if there's actually a value
+        } else if (line.startsWith('TELÉFONO:') || line === 'TELÉFONO:') {
             const val = getVal('TELÉFONO:');
             if (val) {
-                currentGroup.infoCliente.telefono = val;
+                if (!currentGroup.infoTransportista.telefono) currentGroup.infoTransportista.telefono = val;
+                else currentGroup.infoCliente.telefono = val;
             }
         } else if (line.startsWith('PERSONA CONTACTO:')) {
             currentGroup.infoCliente.contacto = getVal('PERSONA CONTACTO:');
@@ -433,35 +867,33 @@ function parsePDFText(text, filename) {
             currentGroup.infoCliente.fecha = getVal('FECHA SERVICIO:');
         }
 
-        // ── Identify section headers ──
         if (line.includes('COMPOSICIÓN') || line.includes('ZONA ORIGEN:')) {
             currentCategoria = 'tienda';
         } else if (line.includes('DETALLE DE LA RUTA') || line.includes('INFORMACION COMPLEMENTARIA')) {
             currentCategoria = 'reporte';
         }
-        
-        // Match CARGA / DESCARGA
+
         if (line === 'CARGA' || line === 'DESCARGA') {
             const tipo = line;
             i++;
-            
-            let currentTask = { 
-                tipo, 
+            let currentTask = {
+                tipo,
+                mainTipo: tipo,
+                subTipo: '',
                 categoria: currentCategoria,
-                fecha: '', 
-                hora: '', 
-                destino: '', 
-                direccion: '', 
-                productos: [], 
-                observaciones: '' 
+                fecha: '',
+                hora: '',
+                destino: '',
+                direccion: '',
+                productos: [],
+                observaciones: ''
             };
-            
+
             while (i < lines.length) {
                 let nextLine = lines[i];
-                if (nextLine === 'CARGA' || nextLine === 'DESCARGA' || nextLine === 'DETALLE RUTAS TRANSPORTISTA' || nextLine.startsWith('OBSERVACIONES:')) {
-                    break; 
+                if (nextLine === 'CARGA' || nextLine === 'DESCARGA' || nextLine.includes('DETALLE RUTAS') || nextLine.startsWith('OBSERVACIONES:')) {
+                    break;
                 }
-                
                 const dtMatch = nextLine.match(/(\d{2}\/\d{2}\/\d{4})\s*-\s*(\d{2}:\d{2})/);
                 if (dtMatch) {
                     currentTask.fecha = dtMatch[1];
@@ -477,13 +909,12 @@ function parsePDFText(text, filename) {
                         let details = [];
                         while (i < lines.length) {
                             let dl = lines[i];
-                            if (dl === 'CARGA' || dl === 'DESCARGA' || dl === 'DETALLE RUTAS TRANSPORTISTA' || dl.startsWith('OBSERVACIONES:') || dl.includes('--- PAGE BREAK ---') || dl === 'INICIO PARADA') {
+                            if (dl === 'CARGA' || dl === 'DESCARGA' || dl.includes('DETALLE RUTAS') || dl.startsWith('OBSERVACIONES:') || dl.includes('--- PAGE BREAK ---') || dl === 'INICIO PARADA') {
                                 break;
                             }
                             details.push(dl);
                             i++;
                         }
-                        
                         let pIndex = Math.min(2, details.length);
                         const provinces = ['ALACANT', 'MURCIA', 'VALENCIA', 'ALBACETE', 'ALMERIA', 'CASTELLON', 'MADRID'];
                         for (let d=0; d<details.length; d++) {
@@ -492,30 +923,26 @@ function parsePDFText(text, filename) {
                                 break;
                             }
                         }
-                        
                         currentTask.direccion = details.slice(0, pIndex).join(' ');
                         currentTask.productos = details.slice(pIndex).filter(p => !p.match(/^(?:CARGA|DESCARGA)$/i));
-                        
                         i--;
                         break;
                     }
                 }
                 i++;
             }
-            
             if (currentTask.fecha) {
                 currentGroup.tasks.push(currentTask);
             }
             continue;
         }
-        
-        // Observations
+
         if (line.startsWith('OBSERVACIONES:')) {
             let obs = line.replace('OBSERVACIONES:', '').trim() + ' ';
             i++;
             while (i < lines.length) {
                 let nextLine = lines[i];
-                if (nextLine === 'CARGA' || nextLine === 'DESCARGA' || nextLine === 'DETALLE RUTAS TRANSPORTISTA' || nextLine.startsWith('TOTAL SIN') || nextLine.startsWith('TOTAL') || nextLine.startsWith('--- PAGE BREAK ---')) {
+                if (nextLine === 'CARGA' || nextLine === 'DESCARGA' || nextLine.includes('DETALLE RUTAS') || nextLine.startsWith('TOTAL SIN') || nextLine.startsWith('TOTAL') || nextLine.startsWith('--- PAGE BREAK ---')) {
                     break;
                 }
                 obs += nextLine + ' ';
@@ -537,78 +964,63 @@ function parsePDFText(text, filename) {
         allRouteGroups.push(currentGroup);
     }
 
-    if (allRouteGroups.length > 0) {
-        welcomeView.classList.add('hidden');
-        errorView.classList.add('hidden');
-        emptyState.classList.add('hidden');
-
-        // Populate Filters
-        const allTaskDates = allRouteGroups.flatMap(g => g.tasks.map(t => t.fecha));
-        const datesSet = new Set(allTaskDates.filter(f => f));
-        availableDates = Array.from(datesSet).sort((a,b) => {
-            const [d1,m1,y1] = a.split('/');
-            const [d2,m2,y2] = b.split('/');
-            return new Date(y1,m1-1,d1) - new Date(y2,m2-1,d2);
-        });
-
-        renderFilters();
-        
-        if (availableDates.length > 0) {
-            const today = new Date();
-            const todayStr = String(today.getDate()).padStart(2, '0') + '/' + String(today.getMonth()+1).padStart(2, '0') + '/' + today.getFullYear();
-            if (availableDates.includes(todayStr)) {
-                dateFilter.value = todayStr;
-            } else {
-                dateFilter.value = availableDates[0];
-            }
-        }
-        
-        headerDateSelector.classList.remove('hidden');
-        metadataBar.classList.remove('hidden');
-        pdfTimestampEl.textContent = pdfCreationTime ? `(Actualizado: ${pdfCreationTime})` : '';
-        tasksContainer.classList.remove('hidden');
-        renderTasks();
-    } else {
-        headerDateSelector.classList.add('hidden');
-        metadataBar.classList.add('hidden');
-        welcomeView.classList.add('hidden');
-        errorView.classList.remove('hidden');
-        emptyState.classList.remove('hidden');
-    }
-    saveToHistory(filename, allRouteGroups, pdfCreationTime);
+    return allRouteGroups;
 }
 
 function renderFilters() {
     dateFilter.innerHTML = '';
+    const now = new Date();
+    const todayStr = String(now.getDate()).padStart(2, '0') + '/' + String(now.getMonth()+1).padStart(2, '0') + '/' + now.getFullYear();
+    
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = String(tomorrow.getDate()).padStart(2, '0') + '/' + String(tomorrow.getMonth()+1).padStart(2, '0') + '/' + tomorrow.getFullYear();
+
     availableDates.forEach(dateStr => {
         const option = document.createElement('option');
         option.value = dateStr;
-        option.textContent = dateStr;
+        let label = dateStr;
+        if (dateStr === todayStr) {
+            label = `${dateStr} (Hoy)`;
+        } else if (dateStr === tomorrowStr) {
+            label = `${dateStr} (Mañana)`;
+        }
+        option.textContent = label;
         dateFilter.appendChild(option);
     });
 }
 
-function renderTasks() {
+function renderTasks(shouldScroll = false) {
     const selectedDate = dateFilter.value;
+    const currentScrollY = window.scrollY;
     
-    // Scroll to top
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-
-    // Day change transition
-    tasksList.classList.remove('animate-update');
-    void tasksList.offsetWidth; // Trigger reflow
-    tasksList.classList.add('animate-update');
+    if (shouldScroll) {
+        // Solo hacer scroll al inicio cuando cambiamos de fecha explícitamente
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        tasksList.classList.remove('animate-update');
+        void tasksList.offsetWidth; // Trigger reflow
+        tasksList.classList.add('animate-update');
+    }
     
     tasksList.innerHTML = '';
     
     // Calculate global daily totals for summary bar
     let globalDailyHuecos = 0;
     allRouteGroups.forEach(group => {
-        group.tasks.filter(t => t.fecha === selectedDate && t.categoria === 'reporte').forEach(task => {
-            const items = parseReporteItems(task.productos);
-            items.forEach(it => {
-                globalDailyHuecos += (Math.floor(parseFloat(it.huecos.replace(',', '.'))) || 0);
-            });
+        group.tasks.filter(t => t.fecha === selectedDate).forEach(task => {
+            if (task.categoria === 'tienda_nueva') {
+                if (task.mainTipo === 'CARGA' && task.items) {
+                    task.items.forEach(it => {
+                        const h = parseFloat((it.huecos || '0').replace(',', '.')) || 0;
+                        globalDailyHuecos += Math.floor(h);
+                    });
+                }
+            } else if (task.categoria === 'reporte' && task.productos) {
+                const items = parseReporteItems(task.productos);
+                items.forEach(it => {
+                    globalDailyHuecos += (Math.floor(parseFloat(it.huecos.replace(',', '.'))) || 0);
+                });
+            }
         });
     });
 
@@ -633,12 +1045,14 @@ function renderTasks() {
                     <div class="route-meta-grid">
                         <span>Vehículo: <b>${group.infoTransportista.vehiculo || '---'}</b></span>
                         <span>Remolque: <b>${group.infoTransportista.remolque || '---'}</b></span>
+                        ${group.tipoVehiculo ? `<span>Tipo: <b>${group.tipoVehiculo}</b></span>` : ''}
                     </div>
                 </div>
                 <div class="route-info-col client">
-                    <div class="route-sub-title">👤 CONTACTO</div>
+                    <div class="route-sub-title">👤 CONTACTO Y VIAJE</div>
                     <div class="route-meta-grid" style="grid-template-columns: 1fr;">
-                        <span>Persona contacto: <b>${linkifyPhoneNumbers(group.infoCliente.contacto) || '---'}</b></span>
+                        ${group.viajeId ? `<span>Nº Viaje: <b>${group.viajeId}</b></span>` : ''}
+                        <span>Contacto: <b>${linkifyPhoneNumbers(group.infoCliente.contacto) || '---'}</b></span>
                         ${group.infoCliente.telefono ? `<span>Teléfono: <a href="tel:${group.infoCliente.telefono.replace(/\s+/g, '')}" class="tel-link"><b>${group.infoCliente.telefono}</b></a></span>` : ''}
                         ${group.infoCliente.fecha ? `<span>Fecha servicio: <b>${group.infoCliente.fecha}</b></span>` : ''}
                     </div>
@@ -651,7 +1065,154 @@ function renderTasks() {
 
         filteredTasks.forEach(task => {
             let prodHTML = '';
-            if (task.productos && task.productos.length > 0) {
+            
+            // ── NUEVO FORMATO ──
+            if (task.categoria === 'tienda_nueva') {
+                if (task.items && task.items.length > 0) {
+                    if (task.mainTipo === 'CARGA') {
+                        let totalHuecosTrip = 0;
+                        let totalPesoTrip = 0;
+                        
+                        let tableRows = task.items.map((it, itIdx) => {
+                            const hVal = parseFloat((it.huecos || '0').replace(',', '.')) || 0;
+                            totalHuecosTrip += hVal;
+                            const pVal = parseFloat((it.peso || '0').replace('kg','').replace(/\./g,'').replace(',', '.')) || 0;
+                            totalPesoTrip += pVal;
+                            
+                            const numHuecosMax = Math.floor(hVal);
+                            const itemKey = `${task.hora}_${it.agrupacion || 'carga'}_${it.destino || itIdx}`.replace(/\s+/g, '_');
+                            let savedCount = getSavedCheck(itemKey);
+                            let initialBadges = '';
+                            for (let n = 1; n <= savedCount; n++) {
+                                const isOver = n > numHuecosMax;
+                                const isLast = n === savedCount;
+                                initialBadges += `<span class="check-item-badge ${isOver ? 'over-max' : 'verified'} ${isLast ? 'last-added' : ''}">${n}</span>`;
+                            }
+                            const isCompleted = savedCount > 0 && savedCount >= numHuecosMax;
+                            const sumClass = (it.suministro || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+                            return `
+                                <tr class="item-main-row clickable-pedido ${isCompleted ? 'row-completed' : ''}" data-pedido="${itemKey}" data-huecos="${numHuecosMax}">
+                                    <td class="item-pedido">${it.agrupacion || '-'}</td>
+                                    <td><span class="badge-suministro ${sumClass}">${it.suministro || '-'}</span></td>
+                                    <td class="item-huecos">${it.huecos || '-'}</td>
+                                    <td style="font-size:0.8rem; color:var(--text-muted);">${it.peso || '-'}</td>
+                                    <td class="item-destino">${it.destino || '-'}</td>
+                                </tr>
+                                <tr class="check-row-wrapper">
+                                    <td colspan="5"><div class="pedido-checks-container">${initialBadges}</div></td>
+                                </tr>
+                            `;
+                        }).join('');
+
+                        const statsBarHTML = `
+                            <div class="reporte-stats-bar">
+                                <div class="stat-item">
+                                    <span class="stat-label">HUECOS:</span>
+                                    <span class="stat-value">${totalHuecosTrip.toFixed(2).replace('.', ',')}</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">PESO TOTAL:</span>
+                                    <span class="stat-value" style="font-size:0.95rem;">${totalPesoTrip > 0 ? totalPesoTrip.toLocaleString('es-ES') + ' kg' : (task.items[0]?.peso || '-')}</span>
+                                </div>
+                                ${isCheckModeEnabled ? `
+                                <div class="stat-item highlight">
+                                    <span class="stat-label">CARGADOS:</span>
+                                    <span class="stat-value trip-loaded-count">0</span>
+                                </div>
+                                ` : ''}
+                            </div>
+                        `;
+
+                        prodHTML = `
+                            <div class="divider"></div>
+                            <div class="section-label">Detalle de Carga ${isCheckModeEnabled ? '(Modo Comprobación)' : ''}</div>
+                            <div class="table-responsive">
+                                <table class="products-table reporte-table">
+                                    <thead>
+                                        <tr>
+                                            <th>AGRUPACIÓN</th>
+                                            <th>SUMINISTRO</th>
+                                            <th>HUECOS</th>
+                                            <th>PESO</th>
+                                            <th>DESTINO</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>${tableRows}</tbody>
+                                </table>
+                            </div>
+                            ${statsBarHTML}
+                        `;
+                    } else {
+                        // DESCARGA
+                        let totalHuecosDesc = 0;
+                        let tableRows = task.items.map((it, itIdx) => {
+                            const hVal = parseFloat((it.huecos || '0').replace(',', '.')) || 0;
+                            totalHuecosDesc += hVal;
+                            const numHuecosMax = Math.floor(hVal);
+                            const itemKey = `${task.hora}_descarga_${it.destino || itIdx}`.replace(/\s+/g, '_');
+                            let savedCount = getSavedCheck(itemKey);
+                            let initialBadges = '';
+                            for (let n = 1; n <= savedCount; n++) {
+                                const isOver = n > numHuecosMax;
+                                const isLast = n === savedCount;
+                                initialBadges += `<span class="check-item-badge ${isOver ? 'over-max' : 'verified'} ${isLast ? 'last-added' : ''}">${n}</span>`;
+                            }
+                            const isCompleted = savedCount > 0 && savedCount >= numHuecosMax;
+
+                            return `
+                                <tr class="item-main-row clickable-pedido ${isCompleted ? 'row-completed' : ''}" data-pedido="${itemKey}" data-huecos="${numHuecosMax}">
+                                    <td class="item-pedido" colspan="2">${it.destino ? `Entrega en: <b>${it.destino}</b>` : 'Descarga Tienda'}</td>
+                                    <td class="item-huecos"><b>${it.huecos}</b></td>
+                                    <td style="font-size:0.8rem; color:var(--text-muted);">${it.peso || '-'}</td>
+                                </tr>
+                                <tr class="check-row-wrapper">
+                                    <td colspan="4"><div class="pedido-checks-container">${initialBadges}</div></td>
+                                </tr>
+                            `;
+                        }).join('');
+
+                        const statsBarHTML = `
+                            <div class="reporte-stats-bar">
+                                <div class="stat-item">
+                                    <span class="stat-label">HUECOS TOTALES:</span>
+                                    <span class="stat-value">${totalHuecosDesc > 0 ? totalHuecosDesc.toFixed(2).replace('.', ',') : (task.items[0]?.huecos || '-')}</span>
+                                </div>
+                                <div class="stat-item">
+                                    <span class="stat-label">PESO DESCARGA:</span>
+                                    <span class="stat-value" style="font-size:0.95rem;">${task.items[0]?.peso || '-'}</span>
+                                </div>
+                                ${isCheckModeEnabled ? `
+                                <div class="stat-item highlight">
+                                    <span class="stat-label">DESCARGADOS:</span>
+                                    <span class="stat-value trip-loaded-count">0</span>
+                                </div>
+                                ` : ''}
+                            </div>
+                        `;
+
+                        prodHTML = `
+                            <div class="divider"></div>
+                            <div class="section-label">Detalle de Descarga ${isCheckModeEnabled ? '(Modo Comprobación)' : ''}</div>
+                            <div class="table-responsive">
+                                <table class="products-table reporte-table">
+                                    <thead>
+                                        <tr>
+                                            <th colspan="2">DETALLE</th>
+                                            <th>HUECOS</th>
+                                            <th>PESO</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>${tableRows}</tbody>
+                                </table>
+                            </div>
+                            ${statsBarHTML}
+                        `;
+                    }
+                }
+            } 
+            // ── FORMATOS ANTERIORES (COMPOSICIÓN Y REPORTE) ──
+            else if (task.productos && task.productos.length > 0) {
                 if (task.categoria === 'tienda') {
                     let parsedTienda = [];
                     let pendingAgrup = [];
@@ -693,7 +1254,8 @@ function renderTasks() {
                             let initialBadges = '';
                             for (let n = 1; n <= savedCount; n++) {
                                 const isOver = n > numHuecosMax;
-                                initialBadges += `<span class="check-item-badge ${isOver ? 'over-max' : 'verified'}">${n}</span>`;
+                                const isLast = n === savedCount;
+                                initialBadges += `<span class="check-item-badge ${isOver ? 'over-max' : 'verified'} ${isLast ? 'last-added' : ''}">${n}</span>`;
                             }
 
                             let isCompleted = savedCount > 0 && savedCount >= numHuecosMax;
@@ -710,28 +1272,29 @@ function renderTasks() {
                             `;
                         }).join('');
                     
-                    const statsBarHTML = `
-                        <div class="reporte-stats-bar">
-                            <div class="stat-item">
-                                <span class="stat-label">HUECOS TOTALES:</span>
-                                <span class="stat-value">${totalHuecosTrip}</span>
+                        const statsBarHTML = `
+                            <div class="reporte-stats-bar">
+                                <div class="stat-item">
+                                    <span class="stat-label">HUECOS TOTALES:</span>
+                                    <span class="stat-value">${totalHuecosTrip}</span>
+                                </div>
+                                ${isCheckModeEnabled ? `
+                                <div class="stat-item highlight">
+                                    <span class="stat-label">TOTAL CARGADOS:</span>
+                                    <span class="stat-value trip-loaded-count">0</span>
+                                </div>
+                                ` : ''}
                             </div>
-                            ${isCheckModeEnabled ? `
-                            <div class="stat-item highlight">
-                                <span class="stat-label">TOTAL CARGADOS:</span>
-                                <span class="stat-value trip-loaded-count">0</span>
-                            </div>
-                            ` : ''}
-                        </div>
-                    `;
+                        `;
 
-                    prodHTML = `<div class="divider"></div><div class="section-label">Detalle de Reporte ${isCheckModeEnabled ? '(Modo Comprobación)' : ''}</div><div class="table-responsive"><table class="products-table reporte-table"><thead><tr><th>Nº PEDIDO</th><th>HUECOS</th><th>DESTINO</th></tr></thead><tbody>${tableRows}</tbody></table></div>${statsBarHTML}`;
+                        prodHTML = `<div class="divider"></div><div class="section-label">Detalle de Reporte ${isCheckModeEnabled ? '(Modo Comprobación)' : ''}</div><div class="table-responsive"><table class="products-table reporte-table"><thead><tr><th>Nº PEDIDO</th><th>HUECOS</th><th>DESTINO</th></tr></thead><tbody>${tableRows}</tbody></table></div>${statsBarHTML}`;
                     }
                 }
             }
 
+            const mainCardClass = (task.mainTipo || task.tipo || 'carga').toLowerCase();
             const el = document.createElement('div');
-            el.className = `task-card ${task.tipo.toLowerCase()}`;
+            el.className = `task-card ${mainCardClass.includes('descarga') ? 'descarga' : 'carga'}`;
             
             let obsHTML = '';
             if (task.observaciones) {
@@ -741,13 +1304,19 @@ function renderTasks() {
             const fullAddress = `${task.destino} ${task.direccion}`.trim();
             const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fullAddress)}`;
 
+            const catLabel = task.categoria === 'reporte' ? 'Reporte' : 'Tienda';
+
             el.innerHTML = `
                 <div class="task-header">
-                    <div style="display:flex; align-items:center; gap:0.5rem;">
-                        <span class="task-type">${task.tipo}</span>
-                        <span class="task-category ${task.categoria}">${task.categoria === 'tienda' ? 'Tienda' : 'Reporte'}</span>
+                    <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                        <span class="task-type">${task.mainTipo || task.tipo}</span>
+                        ${task.subTipo ? `<span class="task-subtype ${task.subTipo.toLowerCase()}">${task.subTipo}</span>` : ''}
+                        <span class="task-category ${task.categoria}">${catLabel}</span>
                     </div>
-                    <div class="task-time"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg><span>${task.hora}</span></div>
+                    <div class="task-time">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                        <span>${task.hora || '--:--'}</span>
+                    </div>
                 </div>
                 <div class="task-detail destination">${linkifyPhoneNumbers(task.destino)}</div>
                 <div class="task-detail address">
@@ -767,7 +1336,44 @@ function renderTasks() {
     });
 
     if (visibleGroups === 0) {
-        tasksList.innerHTML = '<p style="text-align: center; color: var(--text-muted); padding: 2rem;">No hay tareas para esta fecha.</p>';
+        // Buscar otras fechas con tareas disponibles en el PDF
+        const otherDatesWithTasks = availableDates.filter(d => {
+            return allRouteGroups.some(g => g.tasks.some(t => t.fecha === d));
+        });
+
+        let switchButtonHtml = '';
+        if (otherDatesWithTasks.length > 0) {
+            const nextDate = otherDatesWithTasks[0];
+            const now = new Date();
+            const tomorrow = new Date(now);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            const tomorrowStr = String(tomorrow.getDate()).padStart(2, '0') + '/' + String(tomorrow.getMonth()+1).padStart(2, '0') + '/' + tomorrow.getFullYear();
+            const nextLabel = nextDate === tomorrowStr ? `Ver tareas de Mañana (${nextDate})` : `Ver tareas del ${nextDate}`;
+            switchButtonHtml = `
+                <div style="margin-top: 1.25rem;">
+                    <button id="btn-quick-switch-date" class="btn-compact highlight" style="padding: 0.6rem 1.25rem; font-size: 0.9rem; margin: 0 auto; display: inline-flex; align-items: center; gap: 0.5rem; border-radius: 8px;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                        <span>${nextLabel}</span>
+                    </button>
+                </div>
+            `;
+        }
+
+        tasksList.innerHTML = `
+            <div style="text-align: center; color: var(--text-muted); padding: 2.5rem 1rem; background: white; border-radius: 12px; border: 1px dashed var(--border-color); margin: 1rem 0;">
+                <p style="font-size: 1.05rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.35rem;">No hay tareas programadas para el ${selectedDate}.</p>
+                <p style="font-size: 0.85rem;">Puedes consultar otra fecha en el selector superior.</p>
+                ${switchButtonHtml}
+            </div>
+        `;
+
+        const quickSwitchBtn = document.getElementById('btn-quick-switch-date');
+        if (quickSwitchBtn && otherDatesWithTasks.length > 0) {
+            quickSwitchBtn.addEventListener('click', () => {
+                dateFilter.value = otherDatesWithTasks[0];
+                renderTasks(true);
+            });
+        }
     }
 
     // Refresh all local counters after rendering
@@ -776,10 +1382,8 @@ function renderTasks() {
     });
 }
 
-
 function setupNotifications() {
     if (!("Notification" in window) || Notification.permission !== "granted") return;
-    
     if (notificationInterval) clearInterval(notificationInterval);
     
     // Check every minute for upcoming tasks
@@ -787,23 +1391,23 @@ function setupNotifications() {
         const now = new Date();
         const todayStr = String(now.getDate()).padStart(2, '0') + '/' + String(now.getMonth()+1).padStart(2, '0') + '/' + now.getFullYear();
         
-        const todaysTasks = allTasks.filter(t => t.fecha === todayStr);
-        todaysTasks.forEach(task => {
-            if (!task.hora) return;
-            const [h, m] = task.hora.split(':');
-            const taskTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), parseInt(h), parseInt(m));
-            
-            // Notify 15 minutes before
-            const diffMs = taskTime - now;
-            const diffMins = Math.floor(diffMs / 60000);
-            
-            // Generate notification if exactly 15 minutes away
-            if (diffMins === 15) {
-                new Notification(`Próxima Tarea: ${task.tipo}`, {
-                    body: `En 15 minutos: ${task.destino}\nHora: ${task.hora}`,
-                    icon: 'icon.png'
-                });
-            }
+        allRouteGroups.forEach(group => {
+            const todaysTasks = group.tasks.filter(t => t.fecha === todayStr);
+            todaysTasks.forEach(task => {
+                if (!task.hora) return;
+                const [h, m] = task.hora.split(':');
+                const taskTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), parseInt(h), parseInt(m));
+                
+                const diffMs = taskTime - now;
+                const diffMins = Math.floor(diffMs / 60000);
+                
+                if (diffMins === 15) {
+                    new Notification(`Próxima Tarea: ${task.tipo}`, {
+                        body: `En 15 minutos: ${task.destino}\nHora: ${task.hora}`,
+                        icon: 'icon-192.png'
+                    });
+                }
+            });
         });
     }, 60000);
 }
@@ -825,7 +1429,7 @@ document.addEventListener('click', (e) => {
         
         e.target.remove();
         
-        // Re-number remaining badges
+        // Re-number remaining badges and highlight the new last one
         const remaining = container.querySelectorAll('.check-item-badge');
         remaining.forEach((badge, index) => {
             const num = index + 1;
@@ -836,6 +1440,11 @@ document.addEventListener('click', (e) => {
             } else {
                 badge.classList.add('verified');
                 badge.classList.remove('over-max');
+            }
+            if (index === remaining.length - 1) {
+                badge.classList.add('last-added');
+            } else {
+                badge.classList.remove('last-added');
             }
         });
         
@@ -858,13 +1467,16 @@ document.addEventListener('click', (e) => {
         const container = row.nextElementSibling.querySelector('.pedido-checks-container');
         if (!container) return;
         
+        // Quitar resaltado anterior
+        document.querySelectorAll('.check-item-badge.last-added').forEach(b => b.classList.remove('last-added'));
+
         const pedido = row.getAttribute('data-pedido');
         const max = parseInt(row.getAttribute('data-huecos')) || 0;
         const currentCount = container.querySelectorAll('.check-item-badge').length;
         const nextNum = currentCount + 1;
         
         const badge = document.createElement('span');
-        badge.className = 'check-item-badge';
+        badge.className = 'check-item-badge last-added';
         badge.textContent = nextNum;
         
         if (nextNum > max) {

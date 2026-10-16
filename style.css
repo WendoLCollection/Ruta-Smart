@@ -598,6 +598,37 @@ input[type="file"] {
     box-shadow: 0 0 6px rgba(239, 68, 68, 0.4);
 }
 
+/* Resaltar último palet añadido */
+.check-item-badge.last-added {
+    background: linear-gradient(135deg, #f59e0b, #d97706) !important;
+    color: #ffffff !important;
+    font-weight: 900 !important;
+    box-shadow: 0 0 0 2.5px #fde68a, 0 3px 8px rgba(217, 119, 6, 0.5) !important;
+    transform: scale(1.18);
+    z-index: 5;
+    position: relative;
+    animation: badge-pulse-highlight 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.check-item-badge.last-added.over-max {
+    background: linear-gradient(135deg, #ef4444, #b91c1c) !important;
+    box-shadow: 0 0 0 2.5px #fecaca, 0 3px 8px rgba(239, 68, 68, 0.6) !important;
+}
+
+@keyframes badge-pulse-highlight {
+    0% {
+        transform: scale(0.85);
+        opacity: 0.6;
+    }
+    50% {
+        transform: scale(1.3);
+    }
+    100% {
+        transform: scale(1.18);
+        opacity: 1;
+    }
+}
+
 .reporte-stats-bar {
     display: flex;
     justify-content: center;
@@ -937,3 +968,283 @@ input[type="file"] {
 .tasks-list.animate-update {
     animation: slideFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+/* Acciones en pantalla de bienvenida */
+.welcome-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+    width: 100%;
+    max-width: 320px;
+}
+
+.btn-welcome-action {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    padding: 0.85rem 1.25rem;
+    border-radius: 10px;
+    font-size: 0.95rem;
+    font-weight: 700;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    box-shadow: var(--shadow-sm);
+}
+
+.btn-welcome-action.primary {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.btn-welcome-action.primary:hover {
+    background-color: var(--primary-hover);
+}
+
+.btn-welcome-action.secondary {
+    background-color: #f1f5f9;
+    color: var(--text-main);
+    border: 1px solid var(--border-color);
+}
+
+.btn-welcome-action.secondary:hover {
+    background-color: #e2e8f0;
+}
+
+/* Botón Destacado / Actualizar */
+.btn-compact.highlight {
+    background-color: #0284c7;
+    color: white;
+}
+
+.btn-compact.highlight:hover {
+    background-color: #0369a1;
+}
+
+.btn-compact.secondary {
+    background-color: #f1f5f9;
+    color: #334155;
+    border: 1px solid var(--border-color);
+}
+
+.btn-compact.secondary:hover {
+    background-color: #e2e8f0;
+}
+
+/* Modal de Enlace URL */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(15, 23, 42, 0.6);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    padding: 1rem;
+}
+
+.modal-card {
+    background-color: white;
+    border-radius: 16px;
+    padding: 1.5rem;
+    max-width: 480px;
+    width: 100%;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1);
+    animation: slideFadeIn 0.25s ease-out;
+}
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+}
+
+.modal-header h3 {
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.btn-close {
+    background: none;
+    border: none;
+    font-size: 1.75rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    line-height: 1;
+    padding: 0 0.25rem;
+}
+
+.modal-desc {
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-bottom: 1rem;
+    line-height: 1.4;
+}
+
+.input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin-bottom: 0.75rem;
+}
+
+.input-group label {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+.input-group input {
+    padding: 0.75rem 0.9rem;
+    border-radius: 8px;
+    border: 1.5px solid var(--border-color);
+    font-size: 0.9rem;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.input-group input:focus {
+    border-color: #0284c7;
+    box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15);
+}
+
+.url-saved-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 0.6rem 0.8rem;
+    background-color: #ecfdf5;
+    border-radius: 8px;
+    border: 1px solid #a7f3d0;
+    margin-bottom: 1rem;
+}
+
+.url-saved-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #065f46;
+}
+
+.saved-url-text {
+    font-size: 0.8rem;
+    color: #047857;
+    word-break: break-all;
+    text-decoration: underline;
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.6rem;
+    margin-top: 1.25rem;
+}
+
+/* Badges de Subtipo de Tarea */
+.task-subtype {
+    display: inline-block;
+    padding: 0.2rem 0.5rem;
+    border-radius: 6px;
+    font-size: 0.65rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.task-subtype.almacén, .task-subtype.almacen {
+    background-color: #ede9fe;
+    color: #6d28d9;
+    border: 1px solid #ddd6fe;
+}
+
+.task-subtype.tienda {
+    background-color: #dbeafe;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+}
+
+.task-subtype.envases {
+    background-color: #fef3c7;
+    color: #b45309;
+    border: 1px solid #fde68a;
+}
+
+/* Badges de Suministro */
+.badge-suministro {
+    display: inline-block;
+    padding: 0.15rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    background-color: #f1f5f9;
+    color: #475569;
+}
+
+.badge-suministro.congelado {
+    background-color: #e0f2fe;
+    color: #0369a1;
+}
+
+.badge-suministro.refrigerado {
+    background-color: #ccfbf1;
+    color: #0f766e;
+}
+
+.badge-suministro.secos {
+    background-color: #fef3c7;
+    color: #92400e;
+}
+
+.badge-suministro.pescado {
+    background-color: #e0e7ff;
+    color: #3730a3;
+}
+
+.badge-suministro.carne {
+    background-color: #fee2e2;
+    color: #991b1b;
+}
+
+.badge-suministro.envases {
+    background-color: #fae8ff;
+    color: #86198f;
+}
+
+/* Resumen de Tarea en Nuevo Formato */
+.tienda-nueva-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background-color: #f8fafc;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    margin-top: 0.75rem;
+}
+
+.tienda-nueva-summary .summary-chip {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.tienda-nueva-summary .summary-chip strong {
+    color: var(--text-main);
+    font-size: 0.9rem;
+}
+
