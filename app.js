@@ -27,6 +27,8 @@ const urlModal = document.getElementById('url-modal');
 const btnCloseModal = document.getElementById('btn-close-modal');
 const btnSubmitUrl = document.getElementById('btn-submit-url');
 const btnClearUrl = document.getElementById('btn-clear-url');
+const btnPasteUrl = document.getElementById('btn-paste-url');
+const btnClearInput = document.getElementById('btn-clear-input');
 const inputPdfUrl = document.getElementById('input-pdf-url');
 const urlSavedInfo = document.getElementById('url-saved-info');
 const savedUrlLink = document.getElementById('saved-url-link');
@@ -125,8 +127,8 @@ btnHome.addEventListener('click', () => {
     tasksContainer.classList.add('hidden');
     headerDateSelector.classList.add('hidden');
     metadataBar.classList.add('hidden');
-    btnExpandTools.classList.add('hidden');
-    headerTools.classList.add('hidden');
+    if (btnExpandTools) btnExpandTools.classList.add('hidden');
+    if (headerTools) headerTools.classList.add('hidden');
     
     renderHistory();
     updateUrlUi();
@@ -158,7 +160,12 @@ function openUrlModal() {
     updateUrlUi();
     if (urlModal) {
         urlModal.classList.remove('hidden');
-        setTimeout(() => inputPdfUrl && inputPdfUrl.focus(), 100);
+        setTimeout(() => {
+            if (inputPdfUrl) {
+                inputPdfUrl.focus();
+                inputPdfUrl.select();
+            }
+        }, 120);
     }
 }
 
@@ -173,6 +180,32 @@ urlModal?.addEventListener('click', (e) => {
     if (e.target === urlModal) closeUrlModal();
 });
 
+// Pegar enlace desde portapapeles
+btnPasteUrl?.addEventListener('click', async () => {
+    try {
+        if (navigator.clipboard && navigator.clipboard.readText) {
+            const text = await navigator.clipboard.readText();
+            if (text && text.trim()) {
+                inputPdfUrl.value = text.trim();
+                inputPdfUrl.focus();
+                return;
+            }
+        }
+    } catch (err) {
+        console.warn('Error accediendo al portapapeles:', err);
+    }
+    inputPdfUrl.focus();
+    inputPdfUrl.select();
+});
+
+// Limpiar campo de texto en modal
+btnClearInput?.addEventListener('click', () => {
+    if (inputPdfUrl) {
+        inputPdfUrl.value = '';
+        inputPdfUrl.focus();
+    }
+});
+
 btnClearUrl?.addEventListener('click', () => {
     if (confirm('¿Deseas eliminar el enlace web guardado?')) {
         localStorage.removeItem('ruta_smart_live_url');
@@ -183,7 +216,7 @@ btnClearUrl?.addEventListener('click', () => {
 btnSubmitUrl?.addEventListener('click', async () => {
     const url = inputPdfUrl?.value.trim();
     if (!url) {
-        alert('Por favor, introduce un enlace web válido.');
+        alert('Por favor, introduce o pega un enlace web válido.');
         return;
     }
     closeUrlModal();
@@ -237,11 +270,27 @@ async function loadPdfFromUrl(url) {
         localStorage.setItem('ruta_smart_live_url', url);
         updateUrlUi();
 
+        // Nombre descriptivo con fecha para no sobreescribir partes de días distintos
+        let downloadName = '';
+        try {
+            const urlPath = new URL(url).pathname;
+            const parts = urlPath.split('/').filter(Boolean);
+            if (parts.length > 0 && parts[parts.length - 1].toLowerCase().endsWith('.pdf')) {
+                downloadName = decodeURIComponent(parts[parts.length - 1]);
+            }
+        } catch (e) {}
+
+        if (!downloadName) {
+            const now = new Date();
+            const dateStr = String(now.getDate()).padStart(2, '0') + '-' + String(now.getMonth()+1).padStart(2, '0') + '-' + now.getFullYear();
+            downloadName = `Parte_${dateStr}.pdf`;
+        }
+
         const arrayBuffer = await blob.arrayBuffer();
-        await processPdfArrayBuffer(arrayBuffer, 'Ruta_Actualizada.pdf', blob);
+        await processPdfArrayBuffer(arrayBuffer, downloadName, blob);
     } catch (error) {
         console.error('Error al descargar PDF:', error);
-        alert('No se pudo descargar el archivo automáticamente desde el enlace.\n\nEs posible que requiera contraseña, esté en una red interna o tenga bloqueos de seguridad (CORS).\n\nPuedes abrir el enlace en tu navegador, guardarlo en tu móvil y cargarlo con el botón "Cargar".');
+        alert('No se pudo descargar el archivo automáticamente desde el enlace.\n\nEs posible que requiera contraseña, esté en una red interna o tenga bloqueos de seguridad (CORS).\n\nPuedes abrir el enlace en tu navegador, guardarlo en tu móvil y cargarlo desde el inicio.');
         emptyState.classList.remove('hidden');
     } finally {
         loader.classList.add('hidden');
@@ -308,9 +357,11 @@ function renderHistory() {
             tasksContainer.classList.remove('hidden');
             headerDateSelector.classList.remove('hidden');
             metadataBar.classList.remove('hidden');
-            btnExpandTools.classList.remove('hidden');
-            headerTools.classList.remove('hidden');
-            headerTools.classList.add('collapsed');
+            if (btnExpandTools) btnExpandTools.classList.remove('hidden');
+            if (headerTools) {
+                headerTools.classList.remove('hidden');
+                headerTools.classList.add('collapsed');
+            }
             
             // Recalculate available dates for this specific data
             const allTaskDates = allRouteGroups.flatMap(g => g.tasks.map(t => t.fecha));
@@ -364,15 +415,15 @@ function renderHistory() {
 renderHistory();
 
 // Tool Menu Toggle
-btnExpandTools.addEventListener('click', () => {
-    headerTools.classList.toggle('collapsed');
-    btnExpandTools.classList.toggle('rotated');
+btnExpandTools?.addEventListener('click', () => {
+    headerTools?.classList.toggle('collapsed');
+    btnExpandTools?.classList.toggle('rotated');
 });
 
 // Toggle Check Mode
-btnToggleCheck.addEventListener('click', () => {
+btnToggleCheck?.addEventListener('click', () => {
     isCheckModeEnabled = !isCheckModeEnabled;
-    btnToggleCheck.classList.toggle('active', isCheckModeEnabled);
+    btnToggleCheck?.classList.toggle('active', isCheckModeEnabled);
     renderTasks(false); // El modo check NO debe mover la página
 });
 
@@ -471,12 +522,16 @@ async function processPdfArrayBuffer(arrayBuffer, filename, fileBlob = null) {
     }
     
     // UI state for tools
-    btnExpandTools.classList.remove('hidden');
-    btnExpandTools.classList.remove('rotated');
-    headerTools.classList.remove('hidden');
-    headerTools.classList.add('collapsed');
+    if (btnExpandTools) {
+        btnExpandTools.classList.remove('hidden');
+        btnExpandTools.classList.remove('rotated');
+    }
+    if (headerTools) {
+        headerTools.classList.remove('hidden');
+        headerTools.classList.add('collapsed');
+    }
     
-    btnToggleCheck.classList.remove('active');
+    btnToggleCheck?.classList.remove('active');
     isCheckModeEnabled = false;
 
     loader.classList.remove('hidden');
@@ -1071,13 +1126,10 @@ function renderTasks(shouldScroll = false) {
                 if (task.items && task.items.length > 0) {
                     if (task.mainTipo === 'CARGA') {
                         let totalHuecosTrip = 0;
-                        let totalPesoTrip = 0;
                         
                         let tableRows = task.items.map((it, itIdx) => {
                             const hVal = parseFloat((it.huecos || '0').replace(',', '.')) || 0;
                             totalHuecosTrip += hVal;
-                            const pVal = parseFloat((it.peso || '0').replace('kg','').replace(/\./g,'').replace(',', '.')) || 0;
-                            totalPesoTrip += pVal;
                             
                             const numHuecosMax = Math.floor(hVal);
                             const itemKey = `${task.hora}_${it.agrupacion || 'carga'}_${it.destino || itIdx}`.replace(/\s+/g, '_');
@@ -1089,18 +1141,15 @@ function renderTasks(shouldScroll = false) {
                                 initialBadges += `<span class="check-item-badge ${isOver ? 'over-max' : 'verified'} ${isLast ? 'last-added' : ''}">${n}</span>`;
                             }
                             const isCompleted = savedCount > 0 && savedCount >= numHuecosMax;
-                            const sumClass = (it.suministro || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
                             return `
                                 <tr class="item-main-row clickable-pedido ${isCompleted ? 'row-completed' : ''}" data-pedido="${itemKey}" data-huecos="${numHuecosMax}">
                                     <td class="item-pedido">${it.agrupacion || '-'}</td>
-                                    <td><span class="badge-suministro ${sumClass}">${it.suministro || '-'}</span></td>
                                     <td class="item-huecos">${it.huecos || '-'}</td>
-                                    <td style="font-size:0.8rem; color:var(--text-muted);">${it.peso || '-'}</td>
                                     <td class="item-destino">${it.destino || '-'}</td>
                                 </tr>
                                 <tr class="check-row-wrapper">
-                                    <td colspan="5"><div class="pedido-checks-container">${initialBadges}</div></td>
+                                    <td colspan="3"><div class="pedido-checks-container">${initialBadges}</div></td>
                                 </tr>
                             `;
                         }).join('');
@@ -1110,10 +1159,6 @@ function renderTasks(shouldScroll = false) {
                                 <div class="stat-item">
                                     <span class="stat-label">HUECOS:</span>
                                     <span class="stat-value">${totalHuecosTrip.toFixed(2).replace('.', ',')}</span>
-                                </div>
-                                <div class="stat-item">
-                                    <span class="stat-label">PESO TOTAL:</span>
-                                    <span class="stat-value" style="font-size:0.95rem;">${totalPesoTrip > 0 ? totalPesoTrip.toLocaleString('es-ES') + ' kg' : (task.items[0]?.peso || '-')}</span>
                                 </div>
                                 ${isCheckModeEnabled ? `
                                 <div class="stat-item highlight">
@@ -1132,9 +1177,7 @@ function renderTasks(shouldScroll = false) {
                                     <thead>
                                         <tr>
                                             <th>AGRUPACIÓN</th>
-                                            <th>SUMINISTRO</th>
                                             <th>HUECOS</th>
-                                            <th>PESO</th>
                                             <th>DESTINO</th>
                                         </tr>
                                     </thead>
@@ -1162,12 +1205,11 @@ function renderTasks(shouldScroll = false) {
 
                             return `
                                 <tr class="item-main-row clickable-pedido ${isCompleted ? 'row-completed' : ''}" data-pedido="${itemKey}" data-huecos="${numHuecosMax}">
-                                    <td class="item-pedido" colspan="2">${it.destino ? `Entrega en: <b>${it.destino}</b>` : 'Descarga Tienda'}</td>
+                                    <td class="item-pedido">${it.destino ? `Entrega en: <b>${it.destino}</b>` : 'Descarga Tienda'}</td>
                                     <td class="item-huecos"><b>${it.huecos}</b></td>
-                                    <td style="font-size:0.8rem; color:var(--text-muted);">${it.peso || '-'}</td>
                                 </tr>
                                 <tr class="check-row-wrapper">
-                                    <td colspan="4"><div class="pedido-checks-container">${initialBadges}</div></td>
+                                    <td colspan="2"><div class="pedido-checks-container">${initialBadges}</div></td>
                                 </tr>
                             `;
                         }).join('');
@@ -1177,10 +1219,6 @@ function renderTasks(shouldScroll = false) {
                                 <div class="stat-item">
                                     <span class="stat-label">HUECOS TOTALES:</span>
                                     <span class="stat-value">${totalHuecosDesc > 0 ? totalHuecosDesc.toFixed(2).replace('.', ',') : (task.items[0]?.huecos || '-')}</span>
-                                </div>
-                                <div class="stat-item">
-                                    <span class="stat-label">PESO DESCARGA:</span>
-                                    <span class="stat-value" style="font-size:0.95rem;">${task.items[0]?.peso || '-'}</span>
                                 </div>
                                 ${isCheckModeEnabled ? `
                                 <div class="stat-item highlight">
@@ -1198,9 +1236,8 @@ function renderTasks(shouldScroll = false) {
                                 <table class="products-table reporte-table">
                                     <thead>
                                         <tr>
-                                            <th colspan="2">DETALLE</th>
+                                            <th>DETALLE</th>
                                             <th>HUECOS</th>
-                                            <th>PESO</th>
                                         </tr>
                                     </thead>
                                     <tbody>${tableRows}</tbody>
@@ -1515,4 +1552,17 @@ setTimeout(() => {
 
 document.getElementById('btn-close-ad')?.addEventListener('click', () => {
     document.getElementById('ad-footer')?.classList.remove('show');
+});
+
+// Carga automática si se abre con enlace en los parámetros de la URL (?url= o ?pdf=)
+window.addEventListener('DOMContentLoaded', () => {
+    try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const directUrl = urlParams.get('url') || urlParams.get('pdf') || urlParams.get('link');
+        if (directUrl) {
+            loadPdfFromUrl(directUrl);
+        }
+    } catch (e) {
+        console.warn('Error al leer parámetros de URL:', e);
+    }
 });

@@ -20,51 +20,35 @@
         <div class="top-bar-container">
             <header class="header">
                 <div class="header-row">
-                    <h1 id="btn-home" class="app-logo selectable">Ruta Smart</h1>
+                    <h1 id="btn-home" class="app-logo selectable" title="Volver al inicio">Ruta Smart</h1>
                     
                     <div id="header-date-selector" class="date-selector hidden">
                         <select id="date-filter"></select>
                     </div>
 
-                    <button id="btn-refresh-url" class="btn-compact highlight hidden" title="Actualizar PDF desde enlace">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
-                        <span>Actualizar</span>
-                    </button>
-
-                    <button id="btn-expand-tools" class="btn-icon hidden" title="Más herramientas">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                    </button>
-                    
-                    <div class="upload-action">
-                        <label for="pdf-upload" class="btn-compact">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-                            <span>Cargar</span>
-                        </label>
-                        <input type="file" id="pdf-upload" accept=".pdf" />
-                    </div>
-                </div>
-
-                <div id="header-tools" class="header-tools collapsed hidden">
-                    <button id="btn-open-url" class="btn-compact secondary" title="Configurar enlace de ruta">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
-                        <span>Enlace URL</span>
-                    </button>
-
-                    <button id="btn-toggle-check" class="btn-compact" title="Modo Comprobar Carga">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                        <span>Checks</span>
-                    </button>
-                    
-                    <button id="btn-view-pdf" class="btn-compact secondary" title="Ver PDF Original">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-                        <span>Ver PDF original</span>
+                    <button id="btn-refresh-url" class="btn-icon-refresh highlight hidden" title="Recargar PDF desde enlace">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
                     </button>
                 </div>
+
+                <input type="file" id="pdf-upload" accept=".pdf" style="display:none;" />
             </header>
 
             <div id="metadata-bar" class="metadata-bar hidden">
-                <span class="metadata-label">DETALLE RUTAS TRANSPORTISTA</span>
-                <span id="pdf-timestamp" class="metadata-value"></span>
+                <div class="metadata-info">
+                    <span class="metadata-label">DETALLE RUTAS</span>
+                    <span id="pdf-timestamp" class="metadata-value"></span>
+                </div>
+                <div class="metadata-actions">
+                    <button id="btn-toggle-check" class="btn-pill" title="Modo Comprobar Carga">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                        <span>Checks</span>
+                    </button>
+                    <button id="btn-view-pdf" class="btn-pill secondary" title="Ver PDF Original">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                        <span>PDF</span>
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -129,18 +113,22 @@
                     <button id="btn-close-modal" class="btn-close">&times;</button>
                 </div>
                 <div class="modal-body">
-                    <p class="modal-desc">Introduce el enlace web del PDF que se actualiza. Cada vez que abras la app o pulses <strong>"Actualizar"</strong>, se descargará la versión más reciente.</p>
+                    <p class="modal-desc">Introduce o pega el enlace del parte de trabajo de hoy. Cada día puedes cargar el enlace nuevo recibido:</p>
                     <div class="input-group">
                         <label for="input-pdf-url">URL del PDF:</label>
-                        <input type="url" id="input-pdf-url" placeholder="https://ejemplo.com/ruta.pdf" autocomplete="off" />
+                        <div class="url-input-container">
+                            <input type="url" id="input-pdf-url" placeholder="https://ejemplo.com/ruta.pdf" autocomplete="off" />
+                            <button id="btn-paste-url" type="button" class="btn-input-paste" title="Pegar del portapapeles">📋 Pegar</button>
+                            <button id="btn-clear-input" type="button" class="btn-input-clear" title="Borrar texto">&times;</button>
+                        </div>
                     </div>
                     <div id="url-saved-info" class="url-saved-info hidden">
-                        <span class="url-saved-label">Enlace activo guardado:</span>
+                        <span class="url-saved-label">Último enlace guardado:</span>
                         <a id="saved-url-link" class="saved-url-text" target="_blank" href="#"></a>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button id="btn-clear-url" class="btn-compact secondary hidden" type="button">Borrar</button>
+                    <button id="btn-clear-url" class="btn-compact secondary hidden" type="button">Borrar guardado</button>
                     <button id="btn-submit-url" class="btn-compact highlight" type="button">Cargar Hoja</button>
                 </div>
             </div>
