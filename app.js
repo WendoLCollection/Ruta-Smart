@@ -12,6 +12,7 @@ const metadataBar = document.getElementById('metadata-bar');
 const metadataTitleEl = document.getElementById('metadata-title');
 const pdfTimestampEl = document.getElementById('pdf-timestamp');
 const btnViewPdf = document.getElementById('btn-view-pdf');
+const btnShareWhatsapp = document.getElementById('btn-share-whatsapp');
 const btnHome = document.getElementById('btn-home');
 const btnToggleCheck = document.getElementById('btn-toggle-check');
 const headerTools = document.getElementById('header-tools');
@@ -38,6 +39,7 @@ let availableDates = [];
 let pdfCreationTime = '';
 let notificationInterval = null;
 let currentPdfUrl = null;
+let currentPdfBlob = null;
 let currentPdfFilename = '';
 let isCheckModeEnabled = false;
 
@@ -116,6 +118,7 @@ function refreshLocalCounter(card) {
 // Home Button Reset
 btnHome.addEventListener('click', () => {
     currentPdfUrl = null;
+    currentPdfBlob = null;
     currentPdfFilename = '';
     allRouteGroups = [];
     
@@ -129,6 +132,9 @@ btnHome.addEventListener('click', () => {
     metadataBar.classList.add('hidden');
     if (btnExpandTools) btnExpandTools.classList.add('hidden');
     if (headerTools) headerTools.classList.add('hidden');
+
+    const floatBtn = document.getElementById('btn-float-now');
+    if (floatBtn) floatBtn.style.display = 'none';
     
     renderHistory();
     updateUrlUi();
@@ -160,12 +166,7 @@ function openUrlModal() {
     updateUrlUi();
     if (urlModal) {
         urlModal.classList.remove('hidden');
-        setTimeout(() => {
-            if (inputPdfUrl) {
-                inputPdfUrl.focus();
-                inputPdfUrl.select();
-            }
-        }, 120);
+        // Do NOT focus input field to avoid showing on-screen keyboard on mobile
     }
 }
 
@@ -180,29 +181,25 @@ urlModal?.addEventListener('click', (e) => {
     if (e.target === urlModal) closeUrlModal();
 });
 
-// Pegar enlace desde portapapeles
+// Pegar enlace desde portapapeles sin abrir el teclado
 btnPasteUrl?.addEventListener('click', async () => {
     try {
         if (navigator.clipboard && navigator.clipboard.readText) {
             const text = await navigator.clipboard.readText();
             if (text && text.trim()) {
                 inputPdfUrl.value = text.trim();
-                inputPdfUrl.focus();
                 return;
             }
         }
     } catch (err) {
         console.warn('Error accediendo al portapapeles:', err);
     }
-    inputPdfUrl.focus();
-    inputPdfUrl.select();
 });
 
-// Limpiar campo de texto en modal
+// Limpiar campo de texto en modal sin abrir teclado
 btnClearInput?.addEventListener('click', () => {
     if (inputPdfUrl) {
         inputPdfUrl.value = '';
-        inputPdfUrl.focus();
     }
 });
 
@@ -216,7 +213,7 @@ btnClearUrl?.addEventListener('click', () => {
 btnSubmitUrl?.addEventListener('click', async () => {
     const url = inputPdfUrl?.value.trim();
     if (!url) {
-        alert('Por favor, introduce o pega un enlace web válido.');
+        alert('Por favor, pulsa "Pegar" para introducir un enlace web válido.');
         return;
     }
     closeUrlModal();
@@ -247,15 +244,14 @@ async function loadPdfFromUrl(url) {
         let response = null;
         let blob = null;
         
-        // Intentar descarga directa con cache busting
+        // Cache busting
         const cacheBustUrl = url + (url.includes('?') ? '&' : '?') + '_t=' + Date.now();
         try {
             response = await fetch(cacheBustUrl);
             if (!response.ok) throw new Error(`HTTP error ${response.status}`);
             blob = await response.blob();
         } catch (fetchErr) {
-            console.warn('Descarga directa no permitida (CORS o red), probando vía proxy...', fetchErr);
-            // Intentar a través de proxy CORS
+            console.warn('Descarga directa bloqueada (CORS o red), probando vía proxy...', fetchErr);
             try {
                 const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
                 response = await fetch(proxyUrl);
@@ -270,24 +266,22 @@ async function loadPdfFromUrl(url) {
         localStorage.setItem('ruta_smart_live_url', url);
         updateUrlUi();
 
-        // Nombre descriptivo con fecha para no sobreescribir partes de días distintos
-        let downloadName = '';
+        // Nombre temporal; parsePDFText le asignará la fecha real de la tarea
+        let tempDownloadName = '';
         try {
             const urlPath = new URL(url).pathname;
             const parts = urlPath.split('/').filter(Boolean);
             if (parts.length > 0 && parts[parts.length - 1].toLowerCase().endsWith('.pdf')) {
-                downloadName = decodeURIComponent(parts[parts.length - 1]);
+                tempDownloadName = decodeURIComponent(parts[parts.length - 1]);
             }
         } catch (e) {}
 
-        if (!downloadName) {
-            const now = new Date();
-            const dateStr = String(now.getDate()).padStart(2, '0') + '-' + String(now.getMonth()+1).padStart(2, '0') + '-' + now.getFullYear();
-            downloadName = `Parte_${dateStr}.pdf`;
+        if (!tempDownloadName) {
+            tempDownloadName = 'Parte_Pendiente.pdf';
         }
 
         const arrayBuffer = await blob.arrayBuffer();
-        await processPdfArrayBuffer(arrayBuffer, downloadName, blob);
+        await processPdfArrayBuffer(arrayBuffer, tempDownloadName, blob, true);
     } catch (error) {
         console.error('Error al descargar PDF:', error);
         alert('No se pudo descargar el archivo automáticamente desde el enlace.\n\nEs posible que requiera contraseña, esté en una red interna o tenga bloqueos de seguridad (CORS).\n\nPuedes abrir el enlace en tu navegador, guardarlo en tu móvil y cargarlo desde el inicio.');
@@ -304,8 +298,8 @@ updateUrlUi();
 // History Logic
 function saveToHistory(filename, routeGroups, creationTime) {
     let history = JSON.parse(localStorage.getItem('ruta_smart_history') || '[]');
-    // Avoid duplicates by name + time
-    history = history.filter(h => h.filename !== filename || h.creationTime !== creationTime);
+    // Avoid duplicates by name
+    history = history.filter(h => h.filename !== filename);
     
     const newItem = {
         filename,
@@ -336,7 +330,7 @@ function renderHistory() {
             </div>
             <div class="history-item-info">
                 <span class="history-item-name">${item.filename}</span>
-                <span class="history-item-time">${item.creationTime || 'Sin fecha de creación'}</span>
+                <span class="history-item-time">${item.creationTime ? 'Generado: ' + item.creationTime : 'Carga guardada'}</span>
             </div>
             <button class="btn-delete-history" data-idx="${idx}" title="Borrar carga">
                 &times;
@@ -363,9 +357,9 @@ function renderHistory() {
                 headerTools.classList.add('collapsed');
             }
             
-            // Recalculate available dates for this specific data
-            const allTaskDates = allRouteGroups.flatMap(g => g.tasks.map(t => t.fecha));
-            const datesSet = new Set(allTaskDates.filter(f => f));
+            // Recalculate available dates
+            const allTaskDates = allRouteGroups.flatMap(g => g.tasks.map(t => t.fecha)).filter(Boolean);
+            const datesSet = new Set(allTaskDates);
             const now = new Date();
             const todayStr = String(now.getDate()).padStart(2, '0') + '/' + String(now.getMonth()+1).padStart(2, '0') + '/' + now.getFullYear();
             datesSet.add(todayStr);
@@ -377,8 +371,13 @@ function renderHistory() {
             });
 
             renderFilters();
-            if (availableDates.includes(todayStr)) {
+            
+            // Default to today if has tasks, else first date with tasks
+            const datesWithTasks = availableDates.filter(d => allRouteGroups.some(g => g.tasks.some(t => t.fecha === d)));
+            if (datesWithTasks.includes(todayStr)) {
                 dateFilter.value = todayStr;
+            } else if (datesWithTasks.length > 0) {
+                dateFilter.value = datesWithTasks[0];
             } else if (availableDates.length > 0) {
                 dateFilter.value = availableDates[0];
             }
@@ -388,6 +387,7 @@ function renderHistory() {
             // Try to load Original PDF from DB
             getPdfFromDB(currentPdfFilename).then(blob => {
                 if (currentPdfUrl) URL.revokeObjectURL(currentPdfUrl);
+                currentPdfBlob = blob || null;
                 currentPdfUrl = blob ? URL.createObjectURL(blob) : null;
             });
 
@@ -424,54 +424,12 @@ btnExpandTools?.addEventListener('click', () => {
 btnToggleCheck?.addEventListener('click', () => {
     isCheckModeEnabled = !isCheckModeEnabled;
     btnToggleCheck?.classList.toggle('active', isCheckModeEnabled);
-    renderTasks(false); // El modo check NO debe mover la página
+    renderTasks(false); // Check mode does not scroll page
 });
-
-// Helper to parse report products into structured data (legacy / report format)
-function parseReporteItems(productos) {
-    let parsedReporte = [];
-    let pIdx = 0;
-    while (pIdx < productos.length) {
-        let maybePedido = productos[pIdx].trim();
-        // Look for 7-10 digit numbers (Order Numbers)
-        if (/^\d{7,10}$/.test(maybePedido)) {
-            let huecos = '0';
-            let destinoFinal = '-';
-            // Look ahead for huecos format: 1,00 or 2,00
-            for (let j = pIdx + 1; j < pIdx + 5 && j < productos.length; j++) {
-                if (/^\d+,[\d]{2}$/.test(productos[j].trim())) {
-                    huecos = productos[j].trim();
-                    // Look further ahead for destination
-                    for (let k = j + 1; k < j + 6 && k < productos.length; k++) {
-                        let candidate = productos[k].trim();
-                        if (candidate.length > 3 && !/^\d+,\d{2}$/.test(candidate) && !candidate.includes('TOTAL')) {
-                            let sameLineMatch = candidate.match(/(.+?)\s+(\d{4})$/);
-                            if (sameLineMatch) {
-                                destinoFinal = sameLineMatch[1].trim();
-                                break;
-                            }
-                            if (k + 1 < productos.length && /^\d{4}$/.test(productos[k+1].trim())) {
-                                destinoFinal = candidate;
-                                break;
-                            }
-                        }
-                    }
-                    break;
-                }
-            }
-            parsedReporte.push({ pedido: maybePedido, huecos: huecos, destinoFinal: destinoFinal });
-            pIdx += 2;
-        } else {
-            pIdx++;
-        }
-    }
-    return parsedReporte;
-}
 
 // Helper to find and link phone numbers in text
 function linkifyPhoneNumbers(text) {
     if (!text) return text;
-    // Regex for typical Spanish phone numbers (9 digits, maybe spaces, maybe +34)
     const phoneRegex = /(?:(?:\+34|0034)[\s.-]?)?([6789]\d{2}[\s.-]?\d{3}[\s.-]?\d{3})/g;
     return text.replace(phoneRegex, (match) => {
         const cleanNumber = match.replace(/[\s.-]/g, '').replace(/^00/, '+');
@@ -493,6 +451,74 @@ btnViewPdf.addEventListener('click', () => {
     }
 });
 
+// Compartir por WhatsApp (PDF y enlace juntos)
+async function shareParte() {
+    if (!currentPdfFilename || allRouteGroups.length === 0) {
+        alert('No hay ninguna hoja de ruta cargada para compartir.');
+        return;
+    }
+
+    const selectedDate = dateFilter?.value || '';
+    const group = allRouteGroups[0] || {};
+    const vehiculo = group.infoTransportista?.vehiculo || '';
+    const remolque = group.infoTransportista?.remolque || '';
+    const viaje = group.viajeId || '';
+    const savedUrl = localStorage.getItem('ruta_smart_live_url') || '';
+
+    // Formatear mensaje con enlace
+    let shareText = `📋 *PARTE DE TRABAJO - RUTA SMART*\n`;
+    if (selectedDate) shareText += `📅 *Fecha:* ${selectedDate}\n`;
+    if (vehiculo) shareText += `🚛 *Vehículo:* ${vehiculo} ${remolque ? '(Remolque: ' + remolque + ')' : ''}\n`;
+    if (viaje) shareText += `🔢 *Nº Viaje:* ${viaje}\n`;
+    if (savedUrl) {
+        shareText += `\n🔗 *Enlace del parte:* \n${savedUrl}\n`;
+    }
+
+    let blob = currentPdfBlob;
+    if (!blob && currentPdfFilename) {
+        try {
+            blob = await getPdfFromDB(currentPdfFilename);
+        } catch (e) {
+            console.warn('Error recuperando PDF de DB:', e);
+        }
+    }
+
+    const filename = currentPdfFilename.endsWith('.pdf') ? currentPdfFilename : `${currentPdfFilename}.pdf`;
+
+    // Intentar Web Share API con archivo adjunto y texto (en móviles abre WhatsApp con archivo + texto + link)
+    if (blob && navigator.canShare) {
+        try {
+            const pdfFile = new File([blob], filename, { type: 'application/pdf' });
+            if (navigator.canShare({ files: [pdfFile] })) {
+                await navigator.share({
+                    title: `Parte de Trabajo - ${filename}`,
+                    text: shareText,
+                    files: [pdfFile]
+                });
+                return;
+            }
+        } catch (err) {
+            if (err.name === 'AbortError') return;
+            console.warn('Fallo con Web Share API:', err);
+        }
+    }
+
+    // Fallback: Descargar el archivo PDF para adjuntarlo y abrir WhatsApp con el texto y enlace
+    if (blob) {
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`;
+    window.open(waUrl, '_blank');
+}
+
+btnShareWhatsapp?.addEventListener('click', shareParte);
+
 // File upload event
 uploadBtn.addEventListener('change', async (e) => {
     const file = e.target.files[0];
@@ -500,26 +526,20 @@ uploadBtn.addEventListener('change', async (e) => {
 
     try {
         const arrayBuffer = await file.arrayBuffer();
-        await processPdfArrayBuffer(arrayBuffer, file.name, file);
+        await processPdfArrayBuffer(arrayBuffer, file.name, file, false);
     } catch (err) {
         console.error("Error reading PDF file:", err);
         alert('Hubo un error al leer el archivo. Inténtalo de nuevo.');
     } finally {
-        uploadBtn.value = ''; // Reset input to allow re-uploading the same file
+        uploadBtn.value = '';
     }
 });
 
 // Process ArrayBuffer
-async function processPdfArrayBuffer(arrayBuffer, filename, fileBlob = null) {
+async function processPdfArrayBuffer(arrayBuffer, filename, fileBlob = null, isFromUrl = false) {
     if (currentPdfUrl) URL.revokeObjectURL(currentPdfUrl);
-    if (fileBlob) {
-        currentPdfUrl = URL.createObjectURL(fileBlob);
-        savePdfToDB(filename, fileBlob);
-    } else {
-        const blob = new Blob([arrayBuffer], { type: 'application/pdf' });
-        currentPdfUrl = URL.createObjectURL(blob);
-        savePdfToDB(filename, blob);
-    }
+    currentPdfBlob = fileBlob || new Blob([arrayBuffer], { type: 'application/pdf' });
+    currentPdfUrl = URL.createObjectURL(currentPdfBlob);
     
     // UI state for tools
     if (btnExpandTools) {
@@ -552,7 +572,7 @@ async function processPdfArrayBuffer(arrayBuffer, filename, fileBlob = null) {
             fullText += pageText + '\n\n--- PAGE BREAK ---\n\n';
         }
 
-        parsePDFText(fullText, filename);
+        parsePDFText(fullText, filename, isFromUrl);
     } catch (error) {
         console.error("Error reading PDF: ", error);
         alert('Hubo un error al leer el documento PDF. Por favor, asegúrate de que es un archivo válido.');
@@ -565,27 +585,16 @@ async function processPdfArrayBuffer(arrayBuffer, filename, fileBlob = null) {
 dateFilter.addEventListener('change', () => renderTasks(true));
 
 // Main Parsing Logic
-function parsePDFText(fullText, filename) {
-    currentPdfFilename = filename;
-    
-    // Detect whether document is in NEW FORMAT or OLD FORMAT
-    const isNewFormat = fullText.includes('DETALLES RUTA TRANSPORTISTA') || 
-                        (fullText.includes('DETALLE DE LA RUTA') && fullText.includes('AGRUPACIÓN'));
-
+function parsePDFText(fullText, filename, isFromUrl = false) {
     // Extract creation timestamp
     const timeMatch = fullText.match(/(\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2})/);
-    if (timeMatch) {
-        pdfCreationTime = timeMatch[1];
-    } else {
-        pdfCreationTime = '';
-    }
+    pdfCreationTime = timeMatch ? timeMatch[1] : '';
 
-    if (isNewFormat) {
-        allRouteGroups = parseNewFormat(fullText);
-        if (metadataTitleEl) metadataTitleEl.textContent = 'DETALLES RUTA TRANSPORTISTA';
-    } else {
-        allRouteGroups = parseOldFormat(fullText);
-        if (metadataTitleEl) metadataTitleEl.textContent = 'DETALLE RUTAS TRANSPORTISTA';
+    // Unified Parser that handles both COMPOSICIÓN and DETALLE DE LA RUTA without losing any tasks
+    allRouteGroups = parseUnifiedRoutes(fullText);
+
+    if (metadataTitleEl) {
+        metadataTitleEl.textContent = 'DETALLE RUTAS';
     }
 
     if (allRouteGroups.length > 0) {
@@ -593,11 +602,41 @@ function parsePDFText(fullText, filename) {
         errorView.classList.add('hidden');
         emptyState.classList.add('hidden');
 
+        // Extract the actual task date to assign as filename (not the download date)
+        let actualTaskDate = '';
+        for (const g of allRouteGroups) {
+            for (const t of g.tasks) {
+                if (t.fecha) {
+                    actualTaskDate = t.fecha;
+                    break;
+                }
+            }
+            if (actualTaskDate) break;
+        }
+        if (!actualTaskDate && allRouteGroups[0]?.infoCliente?.fecha) {
+            actualTaskDate = allRouteGroups[0].infoCliente.fecha;
+        }
+
+        if (actualTaskDate) {
+            const dateStr = actualTaskDate.replace(/\//g, '-');
+            const vehiculo = allRouteGroups[0]?.infoTransportista?.vehiculo || '';
+            const assignedName = vehiculo ? `Parte_${dateStr}_${vehiculo}.pdf` : `Parte_${dateStr}.pdf`;
+            
+            // If loaded from URL or had temporary/default name, update to task date
+            if (isFromUrl || filename.startsWith('Parte_') || filename.includes('Pendiente') || filename.includes('temp') || filename.startsWith('http')) {
+                filename = assignedName;
+            }
+        }
+
+        currentPdfFilename = filename;
+        if (currentPdfBlob) {
+            savePdfToDB(currentPdfFilename, currentPdfBlob);
+        }
+
         // Populate Filters
-        const allTaskDates = allRouteGroups.flatMap(g => g.tasks.map(t => t.fecha));
-        const datesSet = new Set(allTaskDates.filter(f => f));
+        const allTaskDates = allRouteGroups.flatMap(g => g.tasks.map(t => t.fecha)).filter(Boolean);
+        const datesSet = new Set(allTaskDates);
         
-        // Incluir siempre la fecha de hoy
         const now = new Date();
         const todayStr = String(now.getDate()).padStart(2, '0') + '/' + String(now.getMonth()+1).padStart(2, '0') + '/' + now.getFullYear();
         datesSet.add(todayStr);
@@ -610,8 +649,12 @@ function parsePDFText(fullText, filename) {
 
         renderFilters();
         
-        if (availableDates.includes(todayStr)) {
+        // Auto-select date with tasks (prioritizing today if it has tasks)
+        const datesWithTasks = availableDates.filter(d => allRouteGroups.some(g => g.tasks.some(t => t.fecha === d)));
+        if (datesWithTasks.includes(todayStr)) {
             dateFilter.value = todayStr;
+        } else if (datesWithTasks.length > 0) {
+            dateFilter.value = datesWithTasks[0];
         } else if (availableDates.length > 0) {
             dateFilter.value = availableDates[0];
         }
@@ -620,6 +663,7 @@ function parsePDFText(fullText, filename) {
         metadataBar.classList.remove('hidden');
         pdfTimestampEl.textContent = (pdfCreationTime ? `(Actualizado: ${pdfCreationTime})` : '') + ` • Hoy: ${todayStr}`;
         tasksContainer.classList.remove('hidden');
+        
         renderTasks(true);
     } else {
         headerDateSelector.classList.add('hidden');
@@ -628,94 +672,181 @@ function parsePDFText(fullText, filename) {
         errorView.classList.remove('hidden');
         emptyState.classList.remove('hidden');
     }
+
     saveToHistory(filename, allRouteGroups, pdfCreationTime);
 }
 
-// Parser for NEW FORMAT ("DETALLES RUTA TRANSPORTISTA")
-function parseNewFormat(fullText) {
+// Unified Parser for All Formats (COMPOSICIÓN, DETALLE DE LA RUTA, PARADAS)
+function parseUnifiedRoutes(fullText) {
     const rawPages = fullText.split('--- PAGE BREAK ---');
-    let groups = [];
-    const suministrosList = ['CONGELADO', 'REFRIGERADO', 'SECOS', 'PESCADO', 'CARNE', 'ENVASES', 'FRUTA', 'PAN'];
+    const suministrosList = ['CONGELADO', 'REFRIGERADO', 'SECOS', 'PESCADO', 'CARNE', 'ENVASES', 'FRUTA', 'PAN', 'FRESCOS', 'VERDURA'];
+    const provinces = ['ALACANT', 'MURCIA', 'VALENCIA', 'ALBACETE', 'ALMERIA', 'CASTELLON', 'MADRID', 'SEVILLA', 'BARCELONA', 'MALAGA', 'ZARAGOZA'];
 
-    rawPages.forEach((pageStr) => {
-        const lines = pageStr.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-        if (lines.length === 0) return;
-        if (!lines.some(l => l.includes('VIAJE:') || l.includes('DETALLE DE LA RUTA'))) return;
+    let allGroups = [];
+    let currentGroup = null;
 
-        const group = {
-            viajeId: '',
-            tipoVehiculo: '',
-            tamanoVehiculo: '',
-            infoTransportista: { empresa: '', vehiculo: '', remolque: '', telefono: '' },
-            infoCliente: { contacto: '', telefono: '', fecha: '' },
-            tasks: []
-        };
+    function getOrCreateGroup(lines, fallbackViaje = '') {
+        let vId = '';
+        let emp = '';
+        let veh = '';
+        let rem = '';
+        let tel = '';
+        let telCli = '';
+        let contacto = '';
+        let fecha = '';
+        let tamano = '';
+        let tipo = '';
 
-        let i = 0;
-        // 1. Header parsing
-        while (i < lines.length) {
-            const line = lines[i];
-            if (line === 'DETALLE DE LA RUTA') break;
-
-            if (line === 'EMPRESA DE TRANSPORTES' || line === 'EMPRESA DE TRANSPORTES:') {
-                if (i + 1 < lines.length && !lines[i+1].includes(':')) {
-                    group.infoTransportista.empresa = lines[++i];
+        for (let i = 0; i < lines.length; i++) {
+            const l = lines[i];
+            if (l.startsWith('VIAJE:')) {
+                const same = l.replace('VIAJE:', '').trim();
+                vId = same || (lines[i+1] && !lines[i+1].includes(':') ? lines[i+1].trim() : '');
+            } else if (l.startsWith('EMPRESA DE TRANSPORTES:') || l === 'EMPRESA DE TRANSPORTES') {
+                const same = l.replace(/EMPRESA DE TRANSPORTES:?/, '').trim();
+                emp = same || (lines[i+1] && !lines[i+1].includes(':') ? lines[i+1].trim() : '');
+            } else if (l.startsWith('VEHICULO:')) {
+                const same = l.replace('VEHICULO:', '').trim();
+                veh = same || (lines[i+1] && !lines[i+1].includes(':') ? lines[i+1].trim() : '');
+            } else if (l.startsWith('MAT. REMOLQ.:')) {
+                const same = l.replace('MAT. REMOLQ.:', '').trim();
+                rem = same || (lines[i+1] && !lines[i+1].includes(':') ? lines[i+1].trim() : '');
+            } else if (l.startsWith('TELÉFONO:') || l === 'TELÉFONO:') {
+                const same = l.replace('TELÉFONO:', '').trim();
+                const ph = same || (lines[i+1] && /^\d{9}$/.test(lines[i+1].trim()) ? lines[i+1].trim() : '');
+                if (ph) {
+                    if (!tel) tel = ph;
+                    else telCli = ph;
                 }
-            } else if (line.startsWith('EMPRESA DE TRANSPORTES:')) {
-                group.infoTransportista.empresa = line.replace('EMPRESA DE TRANSPORTES:', '').trim();
-            } else if (line.startsWith('VEHICULO:')) {
-                const val = line.replace('VEHICULO:', '').trim();
-                group.infoTransportista.vehiculo = val || (lines[i+1] && !lines[i+1].includes(':') ? lines[++i] : '');
-            } else if (line.startsWith('MAT. REMOLQ.:')) {
-                const val = line.replace('MAT. REMOLQ.:', '').trim();
-                group.infoTransportista.remolque = val || (lines[i+1] && !lines[i+1].includes(':') ? lines[++i] : '');
-            } else if (line.startsWith('TELÉFONO:') || line === 'TELÉFONO:') {
-                const val = line.replace('TELÉFONO:', '').trim();
-                const phoneVal = val || (lines[i+1] && /^\d{9}$/.test(lines[i+1]) ? lines[++i] : '');
-                if (phoneVal) {
-                    if (!group.infoTransportista.telefono) group.infoTransportista.telefono = phoneVal;
-                    else group.infoCliente.telefono = phoneVal;
-                }
-            } else if (line.startsWith('PERSONA CONTACTO:')) {
-                const val = line.replace('PERSONA CONTACTO:', '').trim();
-                group.infoCliente.contacto = val || (lines[i+1] && !lines[i+1].includes(':') ? lines[++i] : '');
-            } else if (line.startsWith('VIAJE:')) {
-                const val = line.replace('VIAJE:', '').trim();
-                group.viajeId = val || (lines[i+1] && !lines[i+1].includes(':') ? lines[++i] : '');
-            } else if (line.startsWith('TAMAÑO:')) {
-                const val = line.replace('TAMAÑO:', '').trim();
-                group.tamanoVehiculo = val || (lines[i+1] && !lines[i+1].includes(':') ? lines[++i] : '');
-            } else if (line.startsWith('TIPO:')) {
-                const val = line.replace('TIPO:', '').trim();
-                group.tipoVehiculo = val || (lines[i+1] && !lines[i+1].includes(':') ? lines[++i] : '');
+            } else if (l.startsWith('PERSONA CONTACTO:')) {
+                const same = l.replace('PERSONA CONTACTO:', '').trim();
+                contacto = same || (lines[i+1] && !lines[i+1].includes(':') ? lines[i+1].trim() : '');
+            } else if (l.startsWith('FECHA SERVICIO:')) {
+                const same = l.replace('FECHA SERVICIO:', '').trim();
+                fecha = same || (lines[i+1] && !lines[i+1].includes(':') ? lines[i+1].trim() : '');
+            } else if (l.startsWith('TAMAÑO:')) {
+                const same = l.replace('TAMAÑO:', '').trim();
+                tamano = same || (lines[i+1] && !lines[i+1].includes(':') ? lines[i+1].trim() : '');
+            } else if (l.startsWith('TIPO:')) {
+                const same = l.replace('TIPO:', '').trim();
+                tipo = same || (lines[i+1] && !lines[i+1].includes(':') ? lines[i+1].trim() : '');
             }
-            i++;
         }
 
-        // 2. Observations at page level
-        let pageObservaciones = '';
-        for (let k = 0; k < lines.length; k++) {
-            if (lines[k].startsWith('OBSERVACIONES:')) {
-                let obsParts = [lines[k].replace('OBSERVACIONES:', '').trim()];
-                for (let m = k + 1; m < lines.length; m++) {
-                    if (lines[m].startsWith('===') || lines[m].includes('--- PAGE BREAK ---')) break;
-                    obsParts.push(lines[m]);
+        // Si esta página inicia un viaje nuevo
+        if (vId && (!currentGroup || currentGroup.viajeId !== vId)) {
+            currentGroup = {
+                viajeId: vId,
+                tipoVehiculo: tipo,
+                tamanoVehiculo: tamano,
+                infoTransportista: { empresa: emp, vehiculo: veh, remolque: rem, telefono: tel },
+                infoCliente: { contacto: contacto, telefono: telCli, fecha: fecha },
+                tasks: []
+            };
+            allGroups.push(currentGroup);
+            return currentGroup;
+        }
+
+        if (!currentGroup) {
+            currentGroup = {
+                viajeId: vId || fallbackViaje || 'VIAJE_1',
+                tipoVehiculo: tipo,
+                tamanoVehiculo: tamano,
+                infoTransportista: { empresa: emp, vehiculo: veh, remolque: rem, telefono: tel },
+                infoCliente: { contacto: contacto, telefono: telCli, fecha: fecha },
+                tasks: []
+            };
+            allGroups.push(currentGroup);
+        } else {
+            // Completar datos si están en esta página
+            if (emp && !currentGroup.infoTransportista.empresa) currentGroup.infoTransportista.empresa = emp;
+            if (veh && !currentGroup.infoTransportista.vehiculo) currentGroup.infoTransportista.vehiculo = veh;
+            if (rem && !currentGroup.infoTransportista.remolque) currentGroup.infoTransportista.remolque = rem;
+            if (tel && !currentGroup.infoTransportista.telefono) currentGroup.infoTransportista.telefono = tel;
+            if (contacto && !currentGroup.infoCliente.contacto) currentGroup.infoCliente.contacto = contacto;
+            if (telCli && !currentGroup.infoCliente.telefono) currentGroup.infoCliente.telefono = telCli;
+            if (fecha && !currentGroup.infoCliente.fecha) currentGroup.infoCliente.fecha = fecha;
+            if (tipo && !currentGroup.tipoVehiculo) currentGroup.tipoVehiculo = tipo;
+            if (tamano && !currentGroup.tamanoVehiculo) currentGroup.tamanoVehiculo = tamano;
+        }
+
+        return currentGroup;
+    }
+
+    rawPages.forEach((pageStr, pIdx) => {
+        const lines = pageStr.split('\n').map(l => l.trim()).filter(Boolean);
+        if (lines.length === 0) return;
+
+        const group = getOrCreateGroup(lines, 'V_' + (pIdx+1));
+
+        // Observaciones en esta página
+        let pageObs = '';
+        for (let i = 0; i < lines.length; i++) {
+            if (lines[i].startsWith('OBSERVACIONES:')) {
+                let parts = [lines[i].replace('OBSERVACIONES:', '').trim()];
+                for (let j = i + 1; j < lines.length; j++) {
+                    if (lines[j].startsWith('TOTAL SIN') || lines[j].startsWith('TOTAL') || lines[j].startsWith('DETALLE') || lines[j].startsWith('Gerente:') || lines[j].startsWith('---')) break;
+                    parts.push(lines[j]);
                 }
-                pageObservaciones = obsParts.join(' ').trim();
+                pageObs = parts.join(' ').trim();
                 break;
             }
         }
 
-        // 3. Skip to first CARGA or DESCARGA
-        while (i < lines.length) {
-            if (lines[i] === 'CARGA' || lines[i] === 'DESCARGA') break;
-            i++;
-        }
+        const isDetalleRuta = lines.includes('DETALLE DE LA RUTA');
+        const isComposicion = lines.includes('COMPOSICIÓN');
 
-        // 4. Tasks Parsing
+        let i = 0;
         while (i < lines.length) {
             const line = lines[i];
-            if (line.startsWith('OBSERVACIONES:')) break;
+
+            // PARADAS (Lavado de camión, descansos, etc.)
+            if (line === 'INICIO PARADA') {
+                let paradaTipo = lines[i+1] || 'PARADA';
+                let paradaSub = lines[i+2] || '';
+                let paradaFecha = '';
+                let paradaHora = '';
+                let j = i + 1;
+                while (j < lines.length && j < i + 10) {
+                    const dtMatch = lines[j].match(/(\d{2}\/\d{2}\/\d{4})\s*-\s*(\d{2}:\d{2})/);
+                    if (dtMatch) {
+                        paradaFecha = dtMatch[1];
+                        paradaHora = dtMatch[2];
+                        break;
+                    }
+                    j++;
+                }
+
+                let finHora = '';
+                for (let k = j + 1; k < lines.length && k < j + 8; k++) {
+                    if (lines[k] === 'FIN PARADA') {
+                        for (let m = k + 1; m < lines.length && m < k + 6; m++) {
+                            const finMatch = lines[m].match(/(\d{2}\/\d{2}\/\d{4})\s*-\s*(\d{2}:\d{2})/);
+                            if (finMatch) {
+                                finHora = finMatch[2];
+                                break;
+                            }
+                        }
+                        break;
+                    }
+                }
+
+                group.tasks.push({
+                    tipo: 'PARADA',
+                    mainTipo: 'PARADA',
+                    subTipo: paradaTipo + (paradaSub ? ' ' + paradaSub : ''),
+                    categoria: 'parada',
+                    fecha: paradaFecha || group.infoCliente.fecha,
+                    hora: paradaHora,
+                    finHora: finHora,
+                    destino: paradaTipo + (paradaSub ? ' ' + paradaSub : ''),
+                    direccion: finHora ? ('Duración programada hasta las ' + finHora) : '',
+                    items: [],
+                    observaciones: pageObs
+                });
+                i = j + 1;
+                continue;
+            }
 
             if (line === 'CARGA' || line === 'DESCARGA') {
                 const mainTipo = line;
@@ -730,7 +861,16 @@ function parseNewFormat(fullText) {
 
                 let fecha = '';
                 let hora = '';
+
+                // Extraer fecha y hora
                 while (nextIdx < lines.length && !fecha) {
+                    const dtMatch = lines[nextIdx].match(/(\d{2}\/\d{2}\/\d{4})\s*-\s*(\d{2}:\d{2})/);
+                    if (dtMatch) {
+                        fecha = dtMatch[1];
+                        hora = dtMatch[2];
+                        nextIdx++;
+                        break;
+                    }
                     if (/^\d{2}\/\d{2}\/\d{4}$/.test(lines[nextIdx])) {
                         fecha = lines[nextIdx++];
                         if (nextIdx < lines.length && /^\d{2}:\d{2}$/.test(lines[nextIdx])) {
@@ -741,44 +881,61 @@ function parseNewFormat(fullText) {
                     nextIdx++;
                 }
 
-                // Origin / Destination lines until MERCADONA or next task
+                // Destino y Dirección
                 let origDestLines = [];
                 while (nextIdx < lines.length) {
-                    if (lines[nextIdx] === 'MERCADONA' || lines[nextIdx] === 'CARGA' || lines[nextIdx] === 'DESCARGA' || lines[nextIdx].startsWith('OBSERVACIONES:')) {
+                    const cur = lines[nextIdx];
+                    if (cur === 'MERCADONA' || cur === 'CARGA' || cur === 'DESCARGA' || cur === 'INICIO PARADA' || cur.startsWith('OBSERVACIONES:') || cur.startsWith('DETALLE') || cur.startsWith('---') || cur.startsWith('TOTAL')) {
                         break;
                     }
-                    origDestLines.push(lines[nextIdx]);
+                    origDestLines.push(cur);
                     nextIdx++;
+                    // En composicion la dirección termina en la provincia
+                    if (provinces.includes(cur.toUpperCase())) {
+                        break;
+                    }
                 }
 
-                const origDestFull = origDestLines.join(' ');
                 let destinoName = '';
                 let direccion = '';
-                const commaParts = origDestFull.split(',').map(s => s.trim());
-                if (commaParts.length >= 2) {
-                    destinoName = `${commaParts[0]}, ${commaParts[1]}`;
-                    direccion = commaParts.slice(2).join(', ').trim();
-                } else {
-                    destinoName = origDestFull;
-                }
-
-                // Item lines
-                let itemLines = [];
-                while (nextIdx < lines.length) {
-                    if (lines[nextIdx] === 'CARGA' || lines[nextIdx] === 'DESCARGA' || lines[nextIdx].startsWith('OBSERVACIONES:')) {
+                let pIndex = -1;
+                for (let d = 0; d < origDestLines.length; d++) {
+                    if (provinces.includes(origDestLines[d].toUpperCase())) {
+                        pIndex = d + 1;
                         break;
                     }
-                    itemLines.push(lines[nextIdx]);
+                }
+
+                if (pIndex > 0) {
+                    destinoName = origDestLines[0];
+                    direccion = origDestLines.slice(1, pIndex).join(' ');
+                } else if (origDestLines.length >= 2) {
+                    destinoName = origDestLines[0];
+                    direccion = origDestLines.slice(1).join(', ');
+                } else {
+                    destinoName = origDestLines.join(' ');
+                }
+
+                // Extraer líneas de productos / bultos
+                let items = [];
+                let itemLines = [];
+                let stopTotalUds = '';
+                let stopTotalKg = '';
+
+                while (nextIdx < lines.length) {
+                    const cur = lines[nextIdx];
+                    if (cur === 'CARGA' || cur === 'DESCARGA' || cur === 'INICIO PARADA' || cur.startsWith('OBSERVACIONES:') || cur.startsWith('DETALLE') || cur.startsWith('---') || cur.startsWith('TOTAL SIN')) {
+                        break;
+                    }
+                    itemLines.push(cur);
                     nextIdx++;
                 }
 
-                let items = [];
-                let mercIdxs = [];
-                itemLines.forEach((l, idx) => {
-                    if (l === 'MERCADONA') mercIdxs.push(idx);
-                });
+                // Caso 1: DETALLE DE LA RUTA (con MERCADONA o números de pedido)
+                if (itemLines.includes('MERCADONA')) {
+                    let mercIdxs = [];
+                    itemLines.forEach((l, idx) => { if (l === 'MERCADONA') mercIdxs.push(idx); });
 
-                if (mercIdxs.length > 0) {
                     for (let m = 0; m < mercIdxs.length; m++) {
                         const start = mercIdxs[m] + 1;
                         const end = (m + 1 < mercIdxs.length) ? mercIdxs[m + 1] : itemLines.length;
@@ -800,37 +957,72 @@ function parseNewFormat(fullText) {
                             let agrupacion = preText;
                             let suministro = '';
                             for (const sum of suministrosList) {
-                                if (preText.toUpperCase().endsWith(sum)) {
+                                if (preText.toUpperCase().includes(sum)) {
                                     suministro = sum;
-                                    agrupacion = preText.slice(0, preText.length - sum.length).trim();
+                                    agrupacion = preText.replace(new RegExp('\\b' + sum + '\\b', 'i'), '').trim();
                                     break;
                                 }
                             }
-                            if (!suministro && suministrosList.includes(preText.toUpperCase())) {
-                                suministro = preText.toUpperCase();
-                            }
 
-                            // If mainTipo is DESCARGA, preText actually contains origin & destination
-                            let origen = '';
-                            let destinoFinal = '';
-                            let targetPost = (mainTipo === 'DESCARGA' && !postText) ? preText : postText;
-                            targetPost = targetPost.replace(/\s+\d+,\d{2}(\s+[\d.,]+)?$/, '').trim();
-                            const postMatch = targetPost.match(/^(.+?\b\d{3,5})\s+(.+)$/);
-                            if (postMatch) {
-                                origen = postMatch[1].trim();
-                                destinoFinal = postMatch[2].trim();
-                            } else {
-                                destinoFinal = targetPost;
-                            }
+                            // Limpiar postText si contiene totales acumulados
+                            let cleanPost = postText.replace(/\s+\d+,\d{2}(\s+[\d.,]+)?$/, '').trim();
 
                             items.push({
-                                agrupacion: agrupacion || (mainTipo === 'DESCARGA' ? 'DESCARGA COMPLETA' : 'GENERAL'),
+                                agrupacion: agrupacion || (mainTipo === 'DESCARGA' ? 'DESCARGA TIENDA' : 'GENERAL'),
                                 suministro: suministro || '-',
                                 huecos: huecosVal,
                                 peso: pesoVal ? `${pesoVal} kg` : '-',
-                                origen: origen,
-                                destino: destinoFinal
+                                origen: '',
+                                destino: cleanPost || destinoName
                             });
+                        }
+                    }
+                } 
+                // Caso 2: COMPOSICIÓN (Agrupaciones con Uds y Kgs)
+                else {
+                    let pIdx = 0;
+                    let pendingName = [];
+                    while (pIdx < itemLines.length) {
+                        const cur = itemLines[pIdx];
+                        if (/^\d+,\d{2}$/.test(cur)) {
+                            const huecosVal = cur;
+                            let storeId = '';
+                            if (pIdx + 1 < itemLines.length && /^\d{4,}$/.test(itemLines[pIdx + 1])) {
+                                storeId = itemLines[pIdx + 1];
+                                pIdx += 2;
+                            } else {
+                                pIdx++;
+                            }
+
+                            // Comprobar si las siguientes dos líneas son totales de la parada (Uds y Kgs)
+                            if (pIdx + 1 < itemLines.length && /^\d+,\d{2}$/.test(itemLines[pIdx]) && /^[\d.]+(?:,\d{2})?$/.test(itemLines[pIdx + 1])) {
+                                stopTotalUds = itemLines[pIdx];
+                                stopTotalKg = itemLines[pIdx + 1];
+                                pIdx += 2;
+                            }
+
+                            const name = pendingName.join(' ').trim();
+                            pendingName = [];
+
+                            let suministro = '';
+                            for (const sum of suministrosList) {
+                                if (name.toUpperCase().includes(sum)) {
+                                    suministro = sum;
+                                    break;
+                                }
+                            }
+
+                            items.push({
+                                agrupacion: name || (mainTipo === 'DESCARGA' ? 'DESCARGA TIENDA' : 'CARGA ALMACÉN'),
+                                suministro: suministro || '-',
+                                huecos: huecosVal,
+                                peso: '-',
+                                origen: '',
+                                destino: storeId || destinoName
+                            });
+                        } else {
+                            pendingName.push(cur);
+                            pIdx++;
                         }
                     }
                 }
@@ -843,183 +1035,26 @@ function parseNewFormat(fullText) {
                     tipo: fullTipo,
                     mainTipo: mainTipo,
                     subTipo: subTipo,
-                    categoria: 'tienda_nueva',
+                    categoria: isDetalleRuta ? 'tienda_nueva' : (isComposicion ? 'tienda' : 'reporte'),
                     fecha: fecha,
                     hora: hora,
                     destino: destinoName,
                     direccion: direccion,
                     items: items,
-                    observaciones: pageObservaciones
+                    stopTotalUds: stopTotalUds,
+                    stopTotalKg: stopTotalKg,
+                    observaciones: pageObs
                 });
 
                 i = nextIdx;
                 continue;
             }
-            i++;
-        }
 
-        if (group.tasks.length > 0) {
-            groups.push(group);
+            i++;
         }
     });
 
-    return groups;
-}
-
-// Parser for OLD FORMAT (legacy "COMPOSICIÓN" or "DETALLE RUTAS TRANSPORTISTA")
-function parseOldFormat(fullText) {
-    const lines = fullText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-    let allRouteGroups = [];
-    let i = 0;
-    let currentCategoria = 'tienda';
-    let currentGroup = null;
-
-    function createNewGroup() {
-        return {
-            viajeId: '',
-            infoTransportista: { empresa: '', vehiculo: '', remolque: '', telefono: '' },
-            infoCliente: { contacto: '', telefono: '', fecha: '' },
-            tasks: []
-        };
-    }
-
-    function getVal(label) {
-        const sameLine = lines[i].replace(label, '').trim();
-        if (sameLine) return sameLine;
-        const next = lines[i+1] || '';
-        if (next && !next.includes(':') && !next.startsWith('---')) return next;
-        return '';
-    }
-
-    while (i < lines.length) {
-        let line = lines[i].trim();
-
-        if (line.startsWith('VIAJE:')) {
-            if (currentGroup && currentGroup.tasks.length > 0) {
-                allRouteGroups.push(currentGroup);
-            }
-            currentGroup = createNewGroup();
-            currentGroup.viajeId = getVal('VIAJE:');
-        }
-
-        if (!currentGroup) currentGroup = createNewGroup();
-
-        if (line.startsWith('EMPRESA DE TRANSPORTES:') || line === 'EMPRESA DE TRANSPORTES') {
-            currentGroup.infoTransportista.empresa = getVal(line.includes(':') ? 'EMPRESA DE TRANSPORTES:' : 'EMPRESA DE TRANSPORTES');
-        } else if (line.startsWith('VEHICULO:')) {
-            currentGroup.infoTransportista.vehiculo = getVal('VEHICULO:');
-        } else if (line.startsWith('MAT. REMOLQ.:')) {
-            currentGroup.infoTransportista.remolque = getVal('MAT. REMOLQ.:');
-        } else if (line.startsWith('TELÉFONO:') || line === 'TELÉFONO:') {
-            const val = getVal('TELÉFONO:');
-            if (val) {
-                if (!currentGroup.infoTransportista.telefono) currentGroup.infoTransportista.telefono = val;
-                else currentGroup.infoCliente.telefono = val;
-            }
-        } else if (line.startsWith('PERSONA CONTACTO:')) {
-            currentGroup.infoCliente.contacto = getVal('PERSONA CONTACTO:');
-        } else if (line.startsWith('FECHA SERVICIO:')) {
-            currentGroup.infoCliente.fecha = getVal('FECHA SERVICIO:');
-        }
-
-        if (line.includes('COMPOSICIÓN') || line.includes('ZONA ORIGEN:')) {
-            currentCategoria = 'tienda';
-        } else if (line.includes('DETALLE DE LA RUTA') || line.includes('INFORMACION COMPLEMENTARIA')) {
-            currentCategoria = 'reporte';
-        }
-
-        if (line === 'CARGA' || line === 'DESCARGA') {
-            const tipo = line;
-            i++;
-            let currentTask = {
-                tipo,
-                mainTipo: tipo,
-                subTipo: '',
-                categoria: currentCategoria,
-                fecha: '',
-                hora: '',
-                destino: '',
-                direccion: '',
-                productos: [],
-                observaciones: ''
-            };
-
-            while (i < lines.length) {
-                let nextLine = lines[i];
-                if (nextLine === 'CARGA' || nextLine === 'DESCARGA' || nextLine.includes('DETALLE RUTAS') || nextLine.startsWith('OBSERVACIONES:')) {
-                    break;
-                }
-                const dtMatch = nextLine.match(/(\d{2}\/\d{2}\/\d{4})\s*-\s*(\d{2}:\d{2})/);
-                if (dtMatch) {
-                    currentTask.fecha = dtMatch[1];
-                    currentTask.hora = dtMatch[2];
-                } else if (!currentTask.fecha && nextLine.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
-                    currentTask.fecha = nextLine;
-                } else if (!currentTask.hora && nextLine.match(/^\d{2}:\d{2}$/)) {
-                    currentTask.hora = nextLine;
-                } else if (currentTask.fecha && currentTask.hora) {
-                    if (!currentTask.destino) {
-                        currentTask.destino = nextLine;
-                    } else {
-                        let details = [];
-                        while (i < lines.length) {
-                            let dl = lines[i];
-                            if (dl === 'CARGA' || dl === 'DESCARGA' || dl.includes('DETALLE RUTAS') || dl.startsWith('OBSERVACIONES:') || dl.includes('--- PAGE BREAK ---') || dl === 'INICIO PARADA') {
-                                break;
-                            }
-                            details.push(dl);
-                            i++;
-                        }
-                        let pIndex = Math.min(2, details.length);
-                        const provinces = ['ALACANT', 'MURCIA', 'VALENCIA', 'ALBACETE', 'ALMERIA', 'CASTELLON', 'MADRID'];
-                        for (let d=0; d<details.length; d++) {
-                            if (provinces.includes(details[d].toUpperCase())) {
-                                pIndex = d + 1;
-                                break;
-                            }
-                        }
-                        currentTask.direccion = details.slice(0, pIndex).join(' ');
-                        currentTask.productos = details.slice(pIndex).filter(p => !p.match(/^(?:CARGA|DESCARGA)$/i));
-                        i--;
-                        break;
-                    }
-                }
-                i++;
-            }
-            if (currentTask.fecha) {
-                currentGroup.tasks.push(currentTask);
-            }
-            continue;
-        }
-
-        if (line.startsWith('OBSERVACIONES:')) {
-            let obs = line.replace('OBSERVACIONES:', '').trim() + ' ';
-            i++;
-            while (i < lines.length) {
-                let nextLine = lines[i];
-                if (nextLine === 'CARGA' || nextLine === 'DESCARGA' || nextLine.includes('DETALLE RUTAS') || nextLine.startsWith('TOTAL SIN') || nextLine.startsWith('TOTAL') || nextLine.startsWith('--- PAGE BREAK ---')) {
-                    break;
-                }
-                obs += nextLine + ' ';
-                i++;
-            }
-            for (let j = currentGroup.tasks.length - 1; j >= 0; j--) {
-                if (!currentGroup.tasks[j].observaciones) {
-                    currentGroup.tasks[j].observaciones = obs.trim();
-                } else {
-                    break;
-                }
-            }
-            continue;
-        }
-        i++;
-    }
-
-    if (currentGroup && currentGroup.tasks.length > 0) {
-        allRouteGroups.push(currentGroup);
-    }
-
-    return allRouteGroups;
+    return allGroups.filter(g => g.tasks.length > 0);
 }
 
 function renderFilters() {
@@ -1045,39 +1080,73 @@ function renderFilters() {
     });
 }
 
-function renderTasks(shouldScroll = false) {
-    const selectedDate = dateFilter.value;
-    const currentScrollY = window.scrollY;
-    
-    if (shouldScroll) {
-        // Solo hacer scroll al inicio cuando cambiamos de fecha explícitamente
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        tasksList.classList.remove('animate-update');
-        void tasksList.offsetWidth; // Trigger reflow
-        tasksList.classList.add('animate-update');
+// Auto-scroll a la tarea más cercana a la hora actual
+function scrollToClosestTask() {
+    const taskCards = document.querySelectorAll('.task-card[data-task-time]');
+    if (taskCards.length === 0) return;
+
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+    let closestCard = null;
+    let minDiff = Infinity;
+
+    taskCards.forEach(card => {
+        const timeStr = card.getAttribute('data-task-time');
+        if (!timeStr || !timeStr.includes(':')) return;
+        const [h, m] = timeStr.split(':').map(Number);
+        if (isNaN(h) || isNaN(m)) return;
+        const taskMinutes = h * 60 + m;
+        // Diferencia circular para cambios de turno noche (24h)
+        const rawDiff = Math.abs(taskMinutes - currentMinutes);
+        const circularDiff = Math.min(rawDiff, 1440 - rawDiff);
+        if (circularDiff < minDiff) {
+            minDiff = circularDiff;
+            closestCard = card;
+        }
+    });
+
+    if (closestCard) {
+        document.querySelectorAll('.task-card.is-closest-now').forEach(c => c.classList.remove('is-closest-now'));
+        closestCard.classList.add('is-closest-now');
+        
+        closestCard.querySelector('.closest-now-badge')?.remove();
+        const badge = document.createElement('div');
+        badge.className = 'closest-now-badge';
+        const nowStr = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+        badge.innerHTML = `<span>⏱️ Tarea más cercana a tu hora (${nowStr})</span>`;
+        closestCard.prepend(badge);
+
+        setTimeout(() => {
+            const topBar = document.querySelector('.top-bar-container');
+            const topOffset = topBar ? topBar.offsetHeight : 80;
+            const cardRect = closestCard.getBoundingClientRect();
+            const targetY = cardRect.top + window.pageYOffset - topOffset - 15;
+            window.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
+        }, 180);
     }
+}
+
+// Render Tasks
+function renderTasks(shouldScrollToClosest = false) {
+    const selectedDate = dateFilter.value;
     
     tasksList.innerHTML = '';
     
-    // Calculate global daily totals for summary bar
-    let globalDailyHuecos = 0;
-    allRouteGroups.forEach(group => {
-        group.tasks.filter(t => t.fecha === selectedDate).forEach(task => {
-            if (task.categoria === 'tienda_nueva') {
-                if (task.mainTipo === 'CARGA' && task.items) {
-                    task.items.forEach(it => {
-                        const h = parseFloat((it.huecos || '0').replace(',', '.')) || 0;
-                        globalDailyHuecos += Math.floor(h);
-                    });
-                }
-            } else if (task.categoria === 'reporte' && task.productos) {
-                const items = parseReporteItems(task.productos);
-                items.forEach(it => {
-                    globalDailyHuecos += (Math.floor(parseFloat(it.huecos.replace(',', '.'))) || 0);
-                });
-            }
-        });
-    });
+    // Crear o actualizar botón flotante de volver a la hora
+    let floatBtn = document.getElementById('btn-float-now');
+    if (!floatBtn) {
+        floatBtn = document.createElement('button');
+        floatBtn.id = 'btn-float-now';
+        floatBtn.className = 'btn-float-now';
+        floatBtn.innerHTML = `
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            <span>Mi hora</span>
+        `;
+        floatBtn.addEventListener('click', () => scrollToClosestTask());
+        document.body.appendChild(floatBtn);
+    }
+    floatBtn.style.display = 'flex';
 
     let visibleGroups = 0;
 
@@ -1090,26 +1159,36 @@ function renderTasks(shouldScroll = false) {
         const sec = document.createElement('div');
         sec.className = 'route-section';
         
+        // Cabecera destacada de inicio de trabajo / viaje (NO VERDE, NO ROJA)
         const header = document.createElement('div');
-        header.className = 'route-header-block';
         header.innerHTML = `
-            <div class="route-header-main">
-                <div class="route-info-col carrier">
-                    <div class="route-sub-title">📦 TRANSPORTISTA</div>
-                    <div class="route-meta-val">${group.infoTransportista.empresa || '---'}</div>
-                    <div class="route-meta-grid">
-                        <span>Vehículo: <b>${group.infoTransportista.vehiculo || '---'}</b></span>
-                        <span>Remolque: <b>${group.infoTransportista.remolque || '---'}</b></span>
-                        ${group.tipoVehiculo ? `<span>Tipo: <b>${group.tipoVehiculo}</b></span>` : ''}
+            <div class="route-section-badge">
+                <span>💼 TRABAJO / VIAJE: ${group.viajeId || (gIdx + 1)}</span>
+                <span>${group.infoCliente.fecha || selectedDate}</span>
+            </div>
+            <div class="route-header-block">
+                <div class="route-header-main">
+                    <div class="route-info-col carrier">
+                        <div class="route-sub-title">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="3" width="15" height="13"></rect><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon><circle cx="5.5" cy="18.5" r="2.5"></circle><circle cx="18.5" cy="18.5" r="2.5"></circle></svg>
+                            <span>DATOS TRANSPORTISTA</span>
+                        </div>
+                        <div class="route-meta-val">${group.infoTransportista.empresa || 'Empresa de transportes'}</div>
+                        <div class="route-meta-grid">
+                            <span>Vehículo: <b>${group.infoTransportista.vehiculo || '---'}</b></span>
+                            <span>Remolque: <b>${group.infoTransportista.remolque || '---'}</b></span>
+                            ${group.tipoVehiculo ? `<span>Tipo: <b>${group.tipoVehiculo}</b></span>` : ''}
+                            ${group.tamanoVehiculo ? `<span>Tamaño: <b>${group.tamanoVehiculo}</b></span>` : ''}
+                        </div>
                     </div>
-                </div>
-                <div class="route-info-col client">
-                    <div class="route-sub-title">👤 CONTACTO Y VIAJE</div>
-                    <div class="route-meta-grid" style="grid-template-columns: 1fr;">
-                        ${group.viajeId ? `<span>Nº Viaje: <b>${group.viajeId}</b></span>` : ''}
-                        <span>Contacto: <b>${linkifyPhoneNumbers(group.infoCliente.contacto) || '---'}</b></span>
-                        ${group.infoCliente.telefono ? `<span>Teléfono: <a href="tel:${group.infoCliente.telefono.replace(/\s+/g, '')}" class="tel-link"><b>${group.infoCliente.telefono}</b></a></span>` : ''}
-                        ${group.infoCliente.fecha ? `<span>Fecha servicio: <b>${group.infoCliente.fecha}</b></span>` : ''}
+                    <div class="route-info-col client">
+                        <div class="route-sub-title">👤 CONTACTO Y SERVICIO</div>
+                        <div class="route-meta-grid" style="grid-template-columns: 1fr;">
+                            ${group.viajeId ? `<span>Nº Viaje: <b>${group.viajeId}</b></span>` : ''}
+                            <span>Contacto: <b>${linkifyPhoneNumbers(group.infoCliente.contacto) || 'No especificado'}</b></span>
+                            ${group.infoCliente.telefono ? `<span>Teléfono: <a href="tel:${group.infoCliente.telefono.replace(/\s+/g, '')}" class="tel-link"><b>${group.infoCliente.telefono}</b></a></span>` : ''}
+                            ${group.infoCliente.fecha ? `<span>Fecha servicio: <b>${group.infoCliente.fecha}</b></span>` : ''}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1118,221 +1197,141 @@ function renderTasks(shouldScroll = false) {
 
         filteredTasks.sort((a,b) => (a.hora || '').localeCompare(b.hora || ''));
 
-        filteredTasks.forEach(task => {
+        filteredTasks.forEach((task, tIdx) => {
+            // RENDER PARADA (Lavado camión, etc.)
+            if (task.mainTipo === 'PARADA') {
+                const elParada = document.createElement('div');
+                elParada.className = 'task-card parada';
+                if (task.hora) elParada.setAttribute('data-task-time', task.hora);
+
+                elParada.innerHTML = `
+                    <div class="task-header">
+                        <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                            <span class="task-type parada">⏸️ PARADA</span>
+                            <span class="task-subtype parada">${task.subTipo || 'LAVADO CAMIÓN'}</span>
+                        </div>
+                        <div class="task-time parada">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                            <span>${task.hora}${task.finHora ? ' - ' + task.finHora : ''}</span>
+                        </div>
+                    </div>
+                    <div class="task-detail destination"><b>${task.destino}</b></div>
+                    ${task.direccion ? `<div class="task-detail address" style="font-size:0.85rem; color:var(--text-muted);">${task.direccion}</div>` : ''}
+                    ${task.observaciones ? `<div class="divider"></div><div class="section-label">Observaciones</div><div class="task-observations">${linkifyPhoneNumbers(task.observaciones)}</div>` : ''}
+                `;
+                sec.appendChild(elParada);
+                return;
+            }
+
+            // RENDER CARGA / DESCARGA
             let prodHTML = '';
-            
-            // ── NUEVO FORMATO ──
-            if (task.categoria === 'tienda_nueva') {
-                if (task.items && task.items.length > 0) {
-                    if (task.mainTipo === 'CARGA') {
-                        let totalHuecosTrip = 0;
-                        
-                        let tableRows = task.items.map((it, itIdx) => {
-                            const hVal = parseFloat((it.huecos || '0').replace(',', '.')) || 0;
-                            totalHuecosTrip += hVal;
-                            
-                            const numHuecosMax = Math.floor(hVal);
-                            const itemKey = `${task.hora}_${it.agrupacion || 'carga'}_${it.destino || itIdx}`.replace(/\s+/g, '_');
-                            let savedCount = getSavedCheck(itemKey);
-                            let initialBadges = '';
-                            for (let n = 1; n <= savedCount; n++) {
-                                const isOver = n > numHuecosMax;
-                                const isLast = n === savedCount;
-                                initialBadges += `<span class="check-item-badge ${isOver ? 'over-max' : 'verified'} ${isLast ? 'last-added' : ''}">${n}</span>`;
-                            }
-                            const isCompleted = savedCount > 0 && savedCount >= numHuecosMax;
+            let totalHuecosTrip = 0;
+            let totalPesoTrip = 0;
 
-                            return `
-                                <tr class="item-main-row clickable-pedido ${isCompleted ? 'row-completed' : ''}" data-pedido="${itemKey}" data-huecos="${numHuecosMax}">
-                                    <td class="item-pedido">${it.agrupacion || '-'}</td>
-                                    <td class="item-huecos">${it.huecos || '-'}</td>
-                                    <td class="item-destino">${it.destino || '-'}</td>
-                                </tr>
-                                <tr class="check-row-wrapper">
-                                    <td colspan="3"><div class="pedido-checks-container">${initialBadges}</div></td>
-                                </tr>
-                            `;
-                        }).join('');
+            if (task.items && task.items.length > 0) {
+                // Determinar si hay columnas de suministro y peso
+                const hasSuministro = task.items.some(it => it.suministro && it.suministro !== '-');
+                const hasPeso = task.items.some(it => it.peso && it.peso !== '-');
 
-                        const statsBarHTML = `
-                            <div class="reporte-stats-bar">
-                                <div class="stat-item">
-                                    <span class="stat-label">HUECOS:</span>
-                                    <span class="stat-value">${totalHuecosTrip.toFixed(2).replace('.', ',')}</span>
-                                </div>
-                                ${isCheckModeEnabled ? `
-                                <div class="stat-item highlight">
-                                    <span class="stat-label">CARGADOS:</span>
-                                    <span class="stat-value trip-loaded-count">0</span>
-                                </div>
-                                ` : ''}
-                            </div>
-                        `;
+                let tableRows = task.items.map((it, itIdx) => {
+                    const hVal = parseFloat((it.huecos || '0').replace(',', '.')) || 0;
+                    totalHuecosTrip += hVal;
 
-                        prodHTML = `
-                            <div class="divider"></div>
-                            <div class="section-label">Detalle de Carga ${isCheckModeEnabled ? '(Modo Comprobación)' : ''}</div>
-                            <div class="table-responsive">
-                                <table class="products-table reporte-table">
-                                    <thead>
-                                        <tr>
-                                            <th>AGRUPACIÓN</th>
-                                            <th>HUECOS</th>
-                                            <th>DESTINO</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>${tableRows}</tbody>
-                                </table>
-                            </div>
-                            ${statsBarHTML}
-                        `;
-                    } else {
-                        // DESCARGA
-                        let totalHuecosDesc = 0;
-                        let tableRows = task.items.map((it, itIdx) => {
-                            const hVal = parseFloat((it.huecos || '0').replace(',', '.')) || 0;
-                            totalHuecosDesc += hVal;
-                            const numHuecosMax = Math.floor(hVal);
-                            const itemKey = `${task.hora}_descarga_${it.destino || itIdx}`.replace(/\s+/g, '_');
-                            let savedCount = getSavedCheck(itemKey);
-                            let initialBadges = '';
-                            for (let n = 1; n <= savedCount; n++) {
-                                const isOver = n > numHuecosMax;
-                                const isLast = n === savedCount;
-                                initialBadges += `<span class="check-item-badge ${isOver ? 'over-max' : 'verified'} ${isLast ? 'last-added' : ''}">${n}</span>`;
-                            }
-                            const isCompleted = savedCount > 0 && savedCount >= numHuecosMax;
-
-                            return `
-                                <tr class="item-main-row clickable-pedido ${isCompleted ? 'row-completed' : ''}" data-pedido="${itemKey}" data-huecos="${numHuecosMax}">
-                                    <td class="item-pedido">${it.destino ? `Entrega en: <b>${it.destino}</b>` : 'Descarga Tienda'}</td>
-                                    <td class="item-huecos"><b>${it.huecos}</b></td>
-                                </tr>
-                                <tr class="check-row-wrapper">
-                                    <td colspan="2"><div class="pedido-checks-container">${initialBadges}</div></td>
-                                </tr>
-                            `;
-                        }).join('');
-
-                        const statsBarHTML = `
-                            <div class="reporte-stats-bar">
-                                <div class="stat-item">
-                                    <span class="stat-label">HUECOS TOTALES:</span>
-                                    <span class="stat-value">${totalHuecosDesc > 0 ? totalHuecosDesc.toFixed(2).replace('.', ',') : (task.items[0]?.huecos || '-')}</span>
-                                </div>
-                                ${isCheckModeEnabled ? `
-                                <div class="stat-item highlight">
-                                    <span class="stat-label">DESCARGADOS:</span>
-                                    <span class="stat-value trip-loaded-count">0</span>
-                                </div>
-                                ` : ''}
-                            </div>
-                        `;
-
-                        prodHTML = `
-                            <div class="divider"></div>
-                            <div class="section-label">Detalle de Descarga ${isCheckModeEnabled ? '(Modo Comprobación)' : ''}</div>
-                            <div class="table-responsive">
-                                <table class="products-table reporte-table">
-                                    <thead>
-                                        <tr>
-                                            <th>DETALLE</th>
-                                            <th>HUECOS</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>${tableRows}</tbody>
-                                </table>
-                            </div>
-                            ${statsBarHTML}
-                        `;
+                    if (it.peso && it.peso !== '-') {
+                        const pVal = parseFloat(it.peso.replace('kg', '').replace(/\./g, '').replace(',', '.').trim()) || 0;
+                        totalPesoTrip += pVal;
                     }
-                }
-            } 
-            // ── FORMATOS ANTERIORES (COMPOSICIÓN Y REPORTE) ──
-            else if (task.productos && task.productos.length > 0) {
-                if (task.categoria === 'tienda') {
-                    let parsedTienda = [];
-                    let pendingAgrup = [];
-                    let pIdx = 0;
-                    while (pIdx < task.productos.length) {
-                        let rawStr = task.productos[pIdx].trim();
-                        if (task.tipo === 'CARGA') {
-                            if (/^[\d.,]+$/.test(rawStr) && pIdx + 1 < task.productos.length && /^[\d]{4,}$/.test(task.productos[pIdx+1].trim())) {
-                                parsedTienda.push({ agrupacion: pendingAgrup.join(' '), uds: rawStr, destino: task.productos[pIdx+1].trim() });
-                                pendingAgrup = []; pIdx += 2;
-                            } else {
-                                if (!rawStr.includes('--- PAGE BREAK ---')) pendingAgrup.push(rawStr);
-                                pIdx++;
-                            }
-                        } else {
-                            if (/^[\d]{4,}$/.test(rawStr) && pIdx + 1 < task.productos.length && /^[\d.,]+$/.test(task.productos[pIdx+1].trim())) {
-                                parsedTienda.push({ destino: rawStr, uds: task.productos[pIdx+1].trim() });
-                                pIdx += 2;
-                            } else { pIdx++; }
-                        }
-                    }
-                    if (parsedTienda.length === 0) {
-                        prodHTML = `<div class="divider"></div><div class="section-label">Productos</div><ul class="task-products">${task.productos.map(p => `<li>${p}</li>`).join('')}</ul>`;
-                    } else {
-                        let tableHeaders = task.tipo === 'CARGA' ? '<tr><th>AGRUPACIÓN</th><th>UDS.</th><th>DESTINO</th></tr>' : '<tr><th>DESTINO</th><th>UDS.</th></tr>';
-                        let tableRows = parsedTienda.map(pt => task.tipo === 'CARGA' ? `<tr><td>${pt.agrupacion}</td><td>${pt.uds}</td><td>${pt.destino}</td></tr>` : `<tr><td>${pt.destino}</td><td>${pt.uds}</td></tr>`).join('');
-                        prodHTML = `<div class="divider"></div><div class="section-label">Detalle de ${task.tipo === 'CARGA' ? 'Carga' : 'Descarga'}</div><div class="table-responsive"><table class="products-table"><thead>${tableHeaders}</thead><tbody>${tableRows}</tbody></table></div>`;
-                    }
-                } else if (task.categoria === 'reporte') {
-                    const parsedReporte = parseReporteItems(task.productos);
-                    if (parsedReporte.length === 0) {
-                        prodHTML = `<div class="divider"></div><div class="section-label">Detalle de Reporte</div><ul class="task-products">${task.productos.map(p => `<li>${p}</li>`).join('')}</ul>`;
-                    } else {
-                        const totalHuecosTrip = parsedReporte.reduce((sum, pr) => sum + (Math.floor(parseFloat(pr.huecos.replace(',', '.'))) || 0), 0);
-                        let tableRows = parsedReporte.map(pr => {
-                            const huecosRaw = parseFloat(pr.huecos.replace(',', '.')) || 0;
-                            const numHuecosMax = Math.floor(huecosRaw);
-                            let savedCount = getSavedCheck(pr.pedido);
-                            let initialBadges = '';
-                            for (let n = 1; n <= savedCount; n++) {
-                                const isOver = n > numHuecosMax;
-                                const isLast = n === savedCount;
-                                initialBadges += `<span class="check-item-badge ${isOver ? 'over-max' : 'verified'} ${isLast ? 'last-added' : ''}">${n}</span>`;
-                            }
-
-                            let isCompleted = savedCount > 0 && savedCount >= numHuecosMax;
-
-                            return `
-                                <tr class="item-main-row clickable-pedido ${isCompleted ? 'row-completed' : ''}" data-pedido="${pr.pedido}" data-huecos="${numHuecosMax}">
-                                    <td class="item-pedido">${pr.pedido}</td>
-                                    <td class="item-huecos">${pr.huecos}</td>
-                                    <td class="item-destino">${pr.destinoFinal}</td>
-                                </tr>
-                                <tr class="check-row-wrapper">
-                                    <td colspan="3"><div class="pedido-checks-container">${initialBadges}</div></td>
-                                </tr>
-                            `;
-                        }).join('');
                     
-                        const statsBarHTML = `
-                            <div class="reporte-stats-bar">
-                                <div class="stat-item">
-                                    <span class="stat-label">HUECOS TOTALES:</span>
-                                    <span class="stat-value">${totalHuecosTrip}</span>
-                                </div>
-                                ${isCheckModeEnabled ? `
-                                <div class="stat-item highlight">
-                                    <span class="stat-label">TOTAL CARGADOS:</span>
-                                    <span class="stat-value trip-loaded-count">0</span>
-                                </div>
-                                ` : ''}
-                            </div>
-                        `;
-
-                        prodHTML = `<div class="divider"></div><div class="section-label">Detalle de Reporte ${isCheckModeEnabled ? '(Modo Comprobación)' : ''}</div><div class="table-responsive"><table class="products-table reporte-table"><thead><tr><th>Nº PEDIDO</th><th>HUECOS</th><th>DESTINO</th></tr></thead><tbody>${tableRows}</tbody></table></div>${statsBarHTML}`;
+                    const numHuecosMax = Math.floor(hVal);
+                    const itemKey = `${task.hora}_${it.agrupacion || 'item'}_${it.destino || itIdx}`.replace(/\s+/g, '_');
+                    let savedCount = getSavedCheck(itemKey);
+                    let initialBadges = '';
+                    for (let n = 1; n <= savedCount; n++) {
+                        const isOver = n > numHuecosMax;
+                        const isLast = n === savedCount;
+                        initialBadges += `<span class="check-item-badge ${isOver ? 'over-max' : 'verified'} ${isLast ? 'last-added' : ''}">${n}</span>`;
                     }
-                }
+                    const isCompleted = savedCount > 0 && savedCount >= numHuecosMax;
+
+                    // Badge de suministro
+                    let sumBadge = '';
+                    if (hasSuministro) {
+                        const sumClass = (it.suministro || '').toLowerCase();
+                        sumBadge = `<td><span class="badge-suministro ${sumClass}">${it.suministro || '-'}</span></td>`;
+                    }
+
+                    let pesoCol = hasPeso ? `<td style="font-size:0.8rem; color:var(--text-muted); white-space:nowrap;">${it.peso || '-'}</td>` : '';
+                    let colCount = 3 + (hasSuministro ? 1 : 0) + (hasPeso ? 1 : 0);
+
+                    return `
+                        <tr class="item-main-row clickable-pedido ${isCompleted ? 'row-completed' : ''}" data-pedido="${itemKey}" data-huecos="${numHuecosMax}">
+                            <td class="item-pedido">
+                                <div>${it.agrupacion || '-'}</div>
+                            </td>
+                            ${sumBadge}
+                            <td class="item-huecos"><b>${it.huecos || '-'}</b></td>
+                            ${pesoCol}
+                            <td class="item-destino">${it.destino || '-'}</td>
+                        </tr>
+                        <tr class="check-row-wrapper">
+                            <td colspan="${colCount}"><div class="pedido-checks-container">${initialBadges}</div></td>
+                        </tr>
+                    `;
+                }).join('');
+
+                // Totales de la parada / tarea
+                let displayHuecos = totalHuecosTrip > 0 ? totalHuecosTrip.toFixed(2).replace('.', ',') : (task.stopTotalUds || '-');
+                let displayPeso = totalPesoTrip > 0 ? `${totalPesoTrip.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg` : (task.stopTotalKg ? `${task.stopTotalKg} kg` : '');
+
+                const statsBarHTML = `
+                    <div class="reporte-stats-bar">
+                        <div class="stat-item">
+                            <span class="stat-label">HUECOS TOTALES:</span>
+                            <span class="stat-value">${displayHuecos}</span>
+                        </div>
+                        ${displayPeso ? `
+                        <div class="stat-item">
+                            <span class="stat-label">PESO TOTAL:</span>
+                            <span class="stat-value">${displayPeso}</span>
+                        </div>
+                        ` : ''}
+                        ${isCheckModeEnabled ? `
+                        <div class="stat-item highlight">
+                            <span class="stat-label">${task.mainTipo === 'DESCARGA' ? 'DESCARGADOS:' : 'CARGADOS:'}</span>
+                            <span class="stat-value trip-loaded-count">0</span>
+                        </div>
+                        ` : ''}
+                    </div>
+                `;
+
+                let tableHeaders = `
+                    <tr>
+                        <th>${task.mainTipo === 'DESCARGA' ? 'DETALLE' : 'AGRUPACIÓN'}</th>
+                        ${hasSuministro ? '<th>SUMINISTRO</th>' : ''}
+                        <th>HUECOS</th>
+                        ${hasPeso ? '<th>PESO</th>' : ''}
+                        <th>DESTINO</th>
+                    </tr>
+                `;
+
+                prodHTML = `
+                    <div class="divider"></div>
+                    <div class="section-label">Detalle de ${task.mainTipo === 'DESCARGA' ? 'Descarga' : 'Carga'} ${isCheckModeEnabled ? '(Modo Comprobación)' : ''}</div>
+                    <div class="table-responsive">
+                        <table class="products-table reporte-table">
+                            <thead>${tableHeaders}</thead>
+                            <tbody>${tableRows}</tbody>
+                        </table>
+                    </div>
+                    ${statsBarHTML}
+                `;
             }
 
             const mainCardClass = (task.mainTipo || task.tipo || 'carga').toLowerCase();
             const el = document.createElement('div');
             el.className = `task-card ${mainCardClass.includes('descarga') ? 'descarga' : 'carga'}`;
-            
+            if (task.hora) el.setAttribute('data-task-time', task.hora);
+
             let obsHTML = '';
             if (task.observaciones) {
                 obsHTML = `<div class="divider"></div><div class="section-label">Observaciones</div><div class="task-observations">${linkifyPhoneNumbers(task.observaciones)}</div>`;
@@ -1341,14 +1340,11 @@ function renderTasks(shouldScroll = false) {
             const fullAddress = `${task.destino} ${task.direccion}`.trim();
             const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fullAddress)}`;
 
-            const catLabel = task.categoria === 'reporte' ? 'Reporte' : 'Tienda';
-
             el.innerHTML = `
                 <div class="task-header">
                     <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
                         <span class="task-type">${task.mainTipo || task.tipo}</span>
                         ${task.subTipo ? `<span class="task-subtype ${task.subTipo.toLowerCase()}">${task.subTipo}</span>` : ''}
-                        <span class="task-category ${task.categoria}">${catLabel}</span>
                     </div>
                     <div class="task-time">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
@@ -1362,7 +1358,7 @@ function renderTasks(shouldScroll = false) {
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
                             <span class="address-text">${linkifyPhoneNumbers(task.direccion)}</span>
                         </a>
-                    ` : 'No especificada'}
+                    ` : 'Dirección no especificada'}
                 </div>
                 ${prodHTML}${obsHTML}
             `;
@@ -1373,7 +1369,7 @@ function renderTasks(shouldScroll = false) {
     });
 
     if (visibleGroups === 0) {
-        // Buscar otras fechas con tareas disponibles en el PDF
+        if (floatBtn) floatBtn.style.display = 'none';
         const otherDatesWithTasks = availableDates.filter(d => {
             return allRouteGroups.some(g => g.tasks.some(t => t.fecha === d));
         });
@@ -1411,6 +1407,11 @@ function renderTasks(shouldScroll = false) {
                 renderTasks(true);
             });
         }
+    } else {
+        // Al abrir o cambiar de fecha, llevar suavemente a la hora más cercana
+        if (shouldScrollToClosest) {
+            scrollToClosestTask();
+        }
     }
 
     // Refresh all local counters after rendering
@@ -1419,41 +1420,11 @@ function renderTasks(shouldScroll = false) {
     });
 }
 
-function setupNotifications() {
-    if (!("Notification" in window) || Notification.permission !== "granted") return;
-    if (notificationInterval) clearInterval(notificationInterval);
-    
-    // Check every minute for upcoming tasks
-    notificationInterval = setInterval(() => {
-        const now = new Date();
-        const todayStr = String(now.getDate()).padStart(2, '0') + '/' + String(now.getMonth()+1).padStart(2, '0') + '/' + now.getFullYear();
-        
-        allRouteGroups.forEach(group => {
-            const todaysTasks = group.tasks.filter(t => t.fecha === todayStr);
-            todaysTasks.forEach(task => {
-                if (!task.hora) return;
-                const [h, m] = task.hora.split(':');
-                const taskTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), parseInt(h), parseInt(m));
-                
-                const diffMs = taskTime - now;
-                const diffMins = Math.floor(diffMs / 60000);
-                
-                if (diffMins === 15) {
-                    new Notification(`Próxima Tarea: ${task.tipo}`, {
-                        body: `En 15 minutos: ${task.destino}\nHora: ${task.hora}`,
-                        icon: 'icon-192.png'
-                    });
-                }
-            });
-        });
-    }, 60000);
-}
-
 // Global Click Handler for Checks
 document.addEventListener('click', (e) => {
     if (!isCheckModeEnabled) return;
     
-    // 1. Delete badge if clicking on it
+    // 1. Borrar badge al hacer clic sobre él
     if (e.target.classList.contains('check-item-badge')) {
         e.stopPropagation();
         
@@ -1466,7 +1437,6 @@ document.addEventListener('click', (e) => {
         
         e.target.remove();
         
-        // Re-number remaining badges and highlight the new last one
         const remaining = container.querySelectorAll('.check-item-badge');
         remaining.forEach((badge, index) => {
             const num = index + 1;
@@ -1487,7 +1457,6 @@ document.addEventListener('click', (e) => {
         
         saveCheck(pedido, remaining.length);
         
-        // Update row status
         if (remaining.length < max) {
             row.classList.remove('row-completed');
         } else {
@@ -1498,13 +1467,12 @@ document.addEventListener('click', (e) => {
         return;
     }
 
-    // 2. Add badge if clicking row
+    // 2. Añadir badge al pulsar la fila
     const row = e.target.closest('.clickable-pedido');
     if (row) {
         const container = row.nextElementSibling.querySelector('.pedido-checks-container');
         if (!container) return;
         
-        // Quitar resaltado anterior
         document.querySelectorAll('.check-item-badge.last-added').forEach(b => b.classList.remove('last-added'));
 
         const pedido = row.getAttribute('data-pedido');
@@ -1523,10 +1491,8 @@ document.addEventListener('click', (e) => {
         }
         
         container.appendChild(badge);
-        
         saveCheck(pedido, nextNum);
 
-        // Update row status
         if (nextNum >= max) {
             row.classList.add('row-completed');
         } else {
@@ -1543,16 +1509,6 @@ if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('./service-worker.js').catch(err => console.log('SW error:', err));
     });
 }
-
-// Ads Logic
-setTimeout(() => {
-    const footer = document.getElementById('ad-footer');
-    if (footer) footer.classList.add('show');
-}, 3000);
-
-document.getElementById('btn-close-ad')?.addEventListener('click', () => {
-    document.getElementById('ad-footer')?.classList.remove('show');
-});
 
 // Carga automática si se abre con enlace en los parámetros de la URL (?url= o ?pdf=)
 window.addEventListener('DOMContentLoaded', () => {
