@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ruta-smart-v2';
+const CACHE_NAME = 'ruta-smart-v3';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',

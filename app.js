@@ -451,27 +451,31 @@ btnViewPdf.addEventListener('click', () => {
     }
 });
 
-// Compartir por WhatsApp (PDF y enlace juntos)
+// Toast Notification
+function showToast(msg) {
+    document.querySelectorAll('.toast-notice').forEach(t => t.remove());
+    const toast = document.createElement('div');
+    toast.className = 'toast-notice';
+    toast.textContent = msg;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 2600);
+}
+
+// Compartir por WhatsApp (PDF y enlace de Mercadona juntos)
 async function shareParte() {
     if (!currentPdfFilename || allRouteGroups.length === 0) {
         alert('No hay ninguna hoja de ruta cargada para compartir.');
         return;
     }
 
-    const selectedDate = dateFilter?.value || '';
-    const group = allRouteGroups[0] || {};
-    const vehiculo = group.infoTransportista?.vehiculo || '';
-    const remolque = group.infoTransportista?.remolque || '';
-    const viaje = group.viajeId || '';
-    const savedUrl = localStorage.getItem('ruta_smart_live_url') || '';
-
-    // Formatear mensaje con enlace
-    let shareText = `📋 *PARTE DE TRABAJO - RUTA SMART*\n`;
-    if (selectedDate) shareText += `📅 *Fecha:* ${selectedDate}\n`;
-    if (vehiculo) shareText += `🚛 *Vehículo:* ${vehiculo} ${remolque ? '(Remolque: ' + remolque + ')' : ''}\n`;
-    if (viaje) shareText += `🔢 *Nº Viaje:* ${viaje}\n`;
-    if (savedUrl) {
-        shareText += `\n🔗 *Enlace del parte:* \n${savedUrl}\n`;
+    let mercadonaUrl = localStorage.getItem('ruta_smart_live_url') || '';
+    if (!mercadonaUrl) {
+        const inputUrl = prompt('Introduce o pega el enlace de Mercadona para compartirlo junto al PDF:', '');
+        if (inputUrl && inputUrl.trim()) {
+            mercadonaUrl = inputUrl.trim();
+            localStorage.setItem('ruta_smart_live_url', mercadonaUrl);
+            updateUrlUi();
+        }
     }
 
     let blob = currentPdfBlob;
@@ -485,16 +489,31 @@ async function shareParte() {
 
     const filename = currentPdfFilename.endsWith('.pdf') ? currentPdfFilename : `${currentPdfFilename}.pdf`;
 
-    // Intentar Web Share API con archivo adjunto y texto (en móviles abre WhatsApp con archivo + texto + link)
+    // Copiar automáticamente el enlace de Mercadona al portapapeles
+    if (mercadonaUrl) {
+        try {
+            await navigator.clipboard.writeText(mercadonaUrl);
+            showToast('📋 Enlace de Mercadona copiado al portapapeles');
+        } catch (err) {
+            console.warn('No se pudo copiar al portapapeles:', err);
+        }
+    }
+
+    // Compartir el archivo PDF y el enlace de Mercadona
+    const shareData = {
+        title: filename,
+        text: mercadonaUrl || filename
+    };
+    if (mercadonaUrl) {
+        shareData.url = mercadonaUrl;
+    }
+
     if (blob && navigator.canShare) {
         try {
             const pdfFile = new File([blob], filename, { type: 'application/pdf' });
             if (navigator.canShare({ files: [pdfFile] })) {
-                await navigator.share({
-                    title: `Parte de Trabajo - ${filename}`,
-                    text: shareText,
-                    files: [pdfFile]
-                });
+                shareData.files = [pdfFile];
+                await navigator.share(shareData);
                 return;
             }
         } catch (err) {
@@ -503,7 +522,7 @@ async function shareParte() {
         }
     }
 
-    // Fallback: Descargar el archivo PDF para adjuntarlo y abrir WhatsApp con el texto y enlace
+    // Fallback: Descargar el archivo PDF para adjuntarlo y abrir WhatsApp con el enlace de Mercadona
     if (blob) {
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
@@ -513,8 +532,12 @@ async function shareParte() {
         document.body.removeChild(link);
     }
 
-    const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`;
-    window.open(waUrl, '_blank');
+    if (mercadonaUrl) {
+        const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(mercadonaUrl)}`;
+        window.open(waUrl, '_blank');
+    } else {
+        alert('El PDF se ha descargado. Puedes adjuntarlo en WhatsApp.');
+    }
 }
 
 btnShareWhatsapp?.addEventListener('click', shareParte);
@@ -1080,16 +1103,30 @@ function renderFilters() {
     });
 }
 
-// Auto-scroll a la tarea más cercana a la hora actual
-function scrollToClosestTask() {
+// Auto-scroll a la siguiente tarea programada (SOLO si estamos en el mismo día)
+function scrollToNextTask() {
+    const selectedDate = dateFilter ? dateFilter.value : '';
+    const now = new Date();
+    const todayStr = String(now.getDate()).padStart(2, '0') + '/' + String(now.getMonth()+1).padStart(2, '0') + '/' + now.getFullYear();
+
+    // Si el parte NO es de hoy, no lleva a ningún lado
+    if (selectedDate !== todayStr) {
+        document.querySelectorAll('.task-card.is-closest-now').forEach(c => c.classList.remove('is-closest-now'));
+        document.querySelectorAll('.closest-now-badge').forEach(b => b.remove());
+        const floatBtn = document.getElementById('btn-float-now');
+        if (floatBtn) floatBtn.style.display = 'none';
+        return;
+    }
+
     const taskCards = document.querySelectorAll('.task-card[data-task-time]');
     if (taskCards.length === 0) return;
 
-    const now = new Date();
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
-    let closestCard = null;
-    let minDiff = Infinity;
+    let targetCard = null;
+    let minFutureDiff = Infinity;
+    let fallbackCard = null;
+    let minAnyDiff = Infinity;
 
     taskCards.forEach(card => {
         const timeStr = card.getAttribute('data-task-time');
@@ -1097,30 +1134,42 @@ function scrollToClosestTask() {
         const [h, m] = timeStr.split(':').map(Number);
         if (isNaN(h) || isNaN(m)) return;
         const taskMinutes = h * 60 + m;
-        // Diferencia circular para cambios de turno noche (24h)
+
+        // Buscar siguiente tarea (hora >= hora actual)
+        if (taskMinutes >= currentMinutes) {
+            const diff = taskMinutes - currentMinutes;
+            if (diff < minFutureDiff) {
+                minFutureDiff = diff;
+                targetCard = card;
+            }
+        }
+
+        // Tarea más cercana si ya pasaron todas las del día
         const rawDiff = Math.abs(taskMinutes - currentMinutes);
         const circularDiff = Math.min(rawDiff, 1440 - rawDiff);
-        if (circularDiff < minDiff) {
-            minDiff = circularDiff;
-            closestCard = card;
+        if (circularDiff < minAnyDiff) {
+            minAnyDiff = circularDiff;
+            fallbackCard = card;
         }
     });
 
-    if (closestCard) {
+    const cardToHighlight = targetCard || fallbackCard;
+
+    if (cardToHighlight) {
         document.querySelectorAll('.task-card.is-closest-now').forEach(c => c.classList.remove('is-closest-now'));
-        closestCard.classList.add('is-closest-now');
+        cardToHighlight.classList.add('is-closest-now');
         
-        closestCard.querySelector('.closest-now-badge')?.remove();
+        cardToHighlight.querySelector('.closest-now-badge')?.remove();
         const badge = document.createElement('div');
         badge.className = 'closest-now-badge';
-        const nowStr = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
-        badge.innerHTML = `<span>⏱️ Tarea más cercana a tu hora (${nowStr})</span>`;
-        closestCard.prepend(badge);
+        const taskTime = cardToHighlight.getAttribute('data-task-time') || '';
+        badge.innerHTML = `<span>⏱️ Siguiente tarea (${taskTime})</span>`;
+        cardToHighlight.prepend(badge);
 
         setTimeout(() => {
             const topBar = document.querySelector('.top-bar-container');
             const topOffset = topBar ? topBar.offsetHeight : 80;
-            const cardRect = closestCard.getBoundingClientRect();
+            const cardRect = cardToHighlight.getBoundingClientRect();
             const targetY = cardRect.top + window.pageYOffset - topOffset - 15;
             window.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
         }, 180);
@@ -1128,12 +1177,15 @@ function scrollToClosestTask() {
 }
 
 // Render Tasks
-function renderTasks(shouldScrollToClosest = false) {
+function renderTasks(shouldScrollToNext = false) {
     const selectedDate = dateFilter.value;
+    const now = new Date();
+    const todayStr = String(now.getDate()).padStart(2, '0') + '/' + String(now.getMonth()+1).padStart(2, '0') + '/' + now.getFullYear();
+    const isToday = (selectedDate === todayStr);
     
     tasksList.innerHTML = '';
     
-    // Crear o actualizar botón flotante de volver a la hora
+    // Crear o actualizar botón flotante de siguiente tarea (SOLO visible si estamos en la fecha de hoy)
     let floatBtn = document.getElementById('btn-float-now');
     if (!floatBtn) {
         floatBtn = document.createElement('button');
@@ -1141,12 +1193,12 @@ function renderTasks(shouldScrollToClosest = false) {
         floatBtn.className = 'btn-float-now';
         floatBtn.innerHTML = `
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-            <span>Mi hora</span>
+            <span>Siguiente tarea</span>
         `;
-        floatBtn.addEventListener('click', () => scrollToClosestTask());
+        floatBtn.addEventListener('click', () => scrollToNextTask());
         document.body.appendChild(floatBtn);
     }
-    floatBtn.style.display = 'flex';
+    floatBtn.style.display = isToday ? 'flex' : 'none';
 
     let visibleGroups = 0;
 
@@ -1223,24 +1275,16 @@ function renderTasks(shouldScrollToClosest = false) {
                 return;
             }
 
-            // RENDER CARGA / DESCARGA
+            // RENDER CARGA / DESCARGA (Sin suministros ni peso)
             let prodHTML = '';
             let totalHuecosTrip = 0;
-            let totalPesoTrip = 0;
 
             if (task.items && task.items.length > 0) {
-                // Determinar si hay columnas de suministro y peso
-                const hasSuministro = task.items.some(it => it.suministro && it.suministro !== '-');
-                const hasPeso = task.items.some(it => it.peso && it.peso !== '-');
+                const isDescarga = task.mainTipo === 'DESCARGA';
 
                 let tableRows = task.items.map((it, itIdx) => {
                     const hVal = parseFloat((it.huecos || '0').replace(',', '.')) || 0;
                     totalHuecosTrip += hVal;
-
-                    if (it.peso && it.peso !== '-') {
-                        const pVal = parseFloat(it.peso.replace('kg', '').replace(/\./g, '').replace(',', '.').trim()) || 0;
-                        totalPesoTrip += pVal;
-                    }
                     
                     const numHuecosMax = Math.floor(hVal);
                     const itemKey = `${task.hora}_${it.agrupacion || 'item'}_${it.destino || itIdx}`.replace(/\s+/g, '_');
@@ -1253,35 +1297,32 @@ function renderTasks(shouldScrollToClosest = false) {
                     }
                     const isCompleted = savedCount > 0 && savedCount >= numHuecosMax;
 
-                    // Badge de suministro
-                    let sumBadge = '';
-                    if (hasSuministro) {
-                        const sumClass = (it.suministro || '').toLowerCase();
-                        sumBadge = `<td><span class="badge-suministro ${sumClass}">${it.suministro || '-'}</span></td>`;
+                    if (isDescarga) {
+                        return `
+                            <tr class="item-main-row clickable-pedido ${isCompleted ? 'row-completed' : ''}" data-pedido="${itemKey}" data-huecos="${numHuecosMax}">
+                                <td class="item-pedido">${it.destino ? `Entrega en: <b>${it.destino}</b>` : (it.agrupacion || 'Descarga Tienda')}</td>
+                                <td class="item-huecos"><b>${it.huecos || '-'}</b></td>
+                            </tr>
+                            <tr class="check-row-wrapper">
+                                <td colspan="2"><div class="pedido-checks-container">${initialBadges}</div></td>
+                            </tr>
+                        `;
+                    } else {
+                        return `
+                            <tr class="item-main-row clickable-pedido ${isCompleted ? 'row-completed' : ''}" data-pedido="${itemKey}" data-huecos="${numHuecosMax}">
+                                <td class="item-pedido">${it.agrupacion || '-'}</td>
+                                <td class="item-huecos"><b>${it.huecos || '-'}</b></td>
+                                <td class="item-destino">${it.destino || '-'}</td>
+                            </tr>
+                            <tr class="check-row-wrapper">
+                                <td colspan="3"><div class="pedido-checks-container">${initialBadges}</div></td>
+                            </tr>
+                        `;
                     }
-
-                    let pesoCol = hasPeso ? `<td style="font-size:0.8rem; color:var(--text-muted); white-space:nowrap;">${it.peso || '-'}</td>` : '';
-                    let colCount = 3 + (hasSuministro ? 1 : 0) + (hasPeso ? 1 : 0);
-
-                    return `
-                        <tr class="item-main-row clickable-pedido ${isCompleted ? 'row-completed' : ''}" data-pedido="${itemKey}" data-huecos="${numHuecosMax}">
-                            <td class="item-pedido">
-                                <div>${it.agrupacion || '-'}</div>
-                            </td>
-                            ${sumBadge}
-                            <td class="item-huecos"><b>${it.huecos || '-'}</b></td>
-                            ${pesoCol}
-                            <td class="item-destino">${it.destino || '-'}</td>
-                        </tr>
-                        <tr class="check-row-wrapper">
-                            <td colspan="${colCount}"><div class="pedido-checks-container">${initialBadges}</div></td>
-                        </tr>
-                    `;
                 }).join('');
 
-                // Totales de la parada / tarea
+                // Totales de la parada / tarea (Sin peso)
                 let displayHuecos = totalHuecosTrip > 0 ? totalHuecosTrip.toFixed(2).replace('.', ',') : (task.stopTotalUds || '-');
-                let displayPeso = totalPesoTrip > 0 ? `${totalPesoTrip.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg` : (task.stopTotalKg ? `${task.stopTotalKg} kg` : '');
 
                 const statsBarHTML = `
                     <div class="reporte-stats-bar">
@@ -1289,34 +1330,31 @@ function renderTasks(shouldScrollToClosest = false) {
                             <span class="stat-label">HUECOS TOTALES:</span>
                             <span class="stat-value">${displayHuecos}</span>
                         </div>
-                        ${displayPeso ? `
-                        <div class="stat-item">
-                            <span class="stat-label">PESO TOTAL:</span>
-                            <span class="stat-value">${displayPeso}</span>
-                        </div>
-                        ` : ''}
                         ${isCheckModeEnabled ? `
                         <div class="stat-item highlight">
-                            <span class="stat-label">${task.mainTipo === 'DESCARGA' ? 'DESCARGADOS:' : 'CARGADOS:'}</span>
+                            <span class="stat-label">${isDescarga ? 'DESCARGADOS:' : 'CARGADOS:'}</span>
                             <span class="stat-value trip-loaded-count">0</span>
                         </div>
                         ` : ''}
                     </div>
                 `;
 
-                let tableHeaders = `
+                let tableHeaders = isDescarga ? `
                     <tr>
-                        <th>${task.mainTipo === 'DESCARGA' ? 'DETALLE' : 'AGRUPACIÓN'}</th>
-                        ${hasSuministro ? '<th>SUMINISTRO</th>' : ''}
+                        <th>DETALLE</th>
                         <th>HUECOS</th>
-                        ${hasPeso ? '<th>PESO</th>' : ''}
+                    </tr>
+                ` : `
+                    <tr>
+                        <th>AGRUPACIÓN</th>
+                        <th>HUECOS</th>
                         <th>DESTINO</th>
                     </tr>
                 `;
 
                 prodHTML = `
                     <div class="divider"></div>
-                    <div class="section-label">Detalle de ${task.mainTipo === 'DESCARGA' ? 'Descarga' : 'Carga'} ${isCheckModeEnabled ? '(Modo Comprobación)' : ''}</div>
+                    <div class="section-label">Detalle de ${isDescarga ? 'Descarga' : 'Carga'} ${isCheckModeEnabled ? '(Modo Comprobación)' : ''}</div>
                     <div class="table-responsive">
                         <table class="products-table reporte-table">
                             <thead>${tableHeaders}</thead>
@@ -1377,7 +1415,6 @@ function renderTasks(shouldScrollToClosest = false) {
         let switchButtonHtml = '';
         if (otherDatesWithTasks.length > 0) {
             const nextDate = otherDatesWithTasks[0];
-            const now = new Date();
             const tomorrow = new Date(now);
             tomorrow.setDate(tomorrow.getDate() + 1);
             const tomorrowStr = String(tomorrow.getDate()).padStart(2, '0') + '/' + String(tomorrow.getMonth()+1).padStart(2, '0') + '/' + tomorrow.getFullYear();
@@ -1408,9 +1445,9 @@ function renderTasks(shouldScrollToClosest = false) {
             });
         }
     } else {
-        // Al abrir o cambiar de fecha, llevar suavemente a la hora más cercana
-        if (shouldScrollToClosest) {
-            scrollToClosestTask();
+        // Al abrir o cambiar de fecha, solo llevar a la siguiente tarea SI es hoy
+        if (shouldScrollToNext && isToday) {
+            scrollToNextTask();
         }
     }
 

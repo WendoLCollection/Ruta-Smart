@@ -337,13 +337,51 @@ input[type="file"] {
     font-weight: 800;
 }
 
+.btn-pill.icon-only {
+    padding: 0;
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
 .btn-pill.share-whatsapp:hover {
     background-color: #128c7e;
     border-color: #075e54;
 }
 
 .btn-pill.share-whatsapp:active {
-    transform: scale(0.96);
+    transform: scale(0.92);
+}
+
+.toast-notice {
+    position: fixed;
+    bottom: 2rem;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(15, 23, 42, 0.92);
+    backdrop-filter: blur(4px);
+    color: white;
+    padding: 0.65rem 1.25rem;
+    border-radius: 999px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    z-index: 10000;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+    pointer-events: none;
+    text-align: center;
+    white-space: nowrap;
+    animation: toast-fade 2.5s ease forwards;
+}
+
+@keyframes toast-fade {
+    0% { opacity: 0; transform: translate(-50%, 15px); }
+    15% { opacity: 1; transform: translate(-50%, 0); }
+    80% { opacity: 1; transform: translate(-50%, 0); }
+    100% { opacity: 0; transform: translate(-50%, -10px); }
 }
 
 /* Main Content */
