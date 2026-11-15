@@ -1331,20 +1331,31 @@ input[type="file"] {
     border-color: #6366f1;
 }
 
+/* Fila 1: Botones Pegar y Borrar debajo del campo de enlace */
+.modal-input-actions {
+    display: flex;
+    gap: 0.6rem;
+    margin-top: 0.6rem;
+    margin-bottom: 0.85rem;
+    width: 100%;
+}
+
 .btn-input-action {
+    flex: 1;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 0.35rem;
-    padding: 0.65rem 0.95rem;
+    padding: 0.75rem 0.6rem;
     border-radius: 8px;
-    font-size: 0.85rem;
+    font-size: 0.88rem;
     font-weight: 800;
     cursor: pointer;
     border: none;
     white-space: nowrap;
     transition: all 0.15s ease;
     user-select: none;
+    box-sizing: border-box;
 }
 
 .btn-input-action.paste {
@@ -1370,14 +1381,6 @@ input[type="file"] {
     border-color: #fca5a5;
 }
 
-.btn-submit-large {
-    padding: 0.65rem 1.25rem;
-    font-size: 0.95rem;
-    font-weight: 800;
-    border-radius: 8px;
-    background: linear-gradient(135deg, #0284c7, #0369a1);
-}
-
 .url-saved-info {
     display: flex;
     flex-direction: column;
@@ -1386,7 +1389,8 @@ input[type="file"] {
     background-color: #ecfdf5;
     border-radius: 8px;
     border: 1px solid #a7f3d0;
-    margin-bottom: 1rem;
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
 }
 
 .url-saved-label {
@@ -1402,53 +1406,50 @@ input[type="file"] {
     text-decoration: underline;
 }
 
+/* Fila 2: Debajo del todo los botones de borrar guardado y cargar hoja */
 .modal-footer {
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: flex-end;
     gap: 0.6rem;
     margin-top: 1.25rem;
+    width: 100%;
+}
+
+.modal-footer > button {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.75rem 0.6rem;
+    border-radius: 8px;
+    font-size: 0.88rem;
+    font-weight: 800;
+    cursor: pointer;
+    box-sizing: border-box;
+    white-space: nowrap;
+    border: none;
+    transition: all 0.15s ease;
 }
 
 .modal-footer #btn-clear-url {
-    margin-right: auto;
+    background-color: #fef2f2;
+    color: #b91c1c;
+    border: 1.5px solid #fecaca;
 }
 
-@media (max-width: 480px) {
-    .modal-footer {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 0.6rem;
-    }
+.modal-footer #btn-clear-url:active {
+    background-color: #fee2e2;
+}
 
-    .modal-footer #btn-clear-url {
-        grid-column: span 2;
-        margin-right: 0;
-        justify-content: center;
-        text-align: center;
-        order: 4;
-    }
+.btn-submit-large {
+    background: linear-gradient(135deg, #0284c7, #0369a1);
+    color: white;
+    font-size: 0.95rem;
+    font-weight: 800;
+    box-shadow: 0 2px 6px rgba(2, 132, 199, 0.3);
+}
 
-    .modal-footer #btn-paste-url {
-        grid-column: 1;
-        justify-content: center;
-        order: 1;
-    }
-
-    .modal-footer #btn-clear-input {
-        grid-column: 2;
-        justify-content: center;
-        order: 2;
-    }
-
-    .modal-footer #btn-submit-url {
-        grid-column: span 2;
-        justify-content: center;
-        padding: 0.85rem 1rem;
-        font-size: 1rem;
-        order: 3;
-    }
+.btn-submit-large:active {
+    transform: scale(0.98);
 }
 
 /* Badges de Subtipo de Tarea */

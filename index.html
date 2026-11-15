@@ -122,15 +122,19 @@
                             <input type="text" id="input-pdf-url" readonly inputmode="none" placeholder="Pulsa 'Pegar' para añadir el enlace..." autocomplete="off" />
                         </div>
                     </div>
+                    <!-- Fila 1: Botones de pegar y borrar debajo del campo de enlace -->
+                    <div class="modal-input-actions">
+                        <button id="btn-paste-url" type="button" class="btn-input-action paste" title="Pegar del portapapeles">📋 Pegar</button>
+                        <button id="btn-clear-input" type="button" class="btn-input-action clear" title="Borrar texto">🗑️ Borrar</button>
+                    </div>
                     <div id="url-saved-info" class="url-saved-info hidden">
                         <span class="url-saved-label">Último enlace guardado:</span>
                         <a id="saved-url-link" class="saved-url-text" target="_blank" href="#"></a>
                     </div>
                 </div>
+                <!-- Fila 2: Debajo del todo los botones de borrar guardado y cargar hoja -->
                 <div class="modal-footer">
-                    <button id="btn-clear-url" class="btn-compact secondary hidden" type="button">Borrar guardado</button>
-                    <button id="btn-paste-url" type="button" class="btn-input-action paste" title="Pegar del portapapeles">📋 Pegar</button>
-                    <button id="btn-clear-input" type="button" class="btn-input-action clear" title="Borrar texto">🗑️ Borrar</button>
+                    <button id="btn-clear-url" class="btn-compact secondary hidden" type="button">🗑️ Borrar guardado</button>
                     <button id="btn-submit-url" class="btn-compact highlight btn-submit-large" type="button">🚀 Cargar Hoja</button>
                 </div>
             </div>
