@@ -1310,11 +1310,10 @@ input[type="file"] {
     display: flex;
     align-items: center;
     width: 100%;
-    gap: 0.5rem;
 }
 
 .url-input-container input {
-    flex: 1;
+    width: 100%;
     padding: 0.75rem 0.9rem;
     border-radius: 8px;
     border: 1.5px solid var(--border-color);
@@ -1325,6 +1324,7 @@ input[type="file"] {
     cursor: default;
     color: var(--text-main);
     user-select: all;
+    box-sizing: border-box;
 }
 
 .url-input-container input:focus {
@@ -1334,10 +1334,11 @@ input[type="file"] {
 .btn-input-action {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 0.35rem;
-    padding: 0.7rem 0.9rem;
+    padding: 0.65rem 0.95rem;
     border-radius: 8px;
-    font-size: 0.82rem;
+    font-size: 0.85rem;
     font-weight: 800;
     cursor: pointer;
     border: none;
@@ -1403,9 +1404,51 @@ input[type="file"] {
 
 .modal-footer {
     display: flex;
+    flex-wrap: wrap;
+    align-items: center;
     justify-content: flex-end;
     gap: 0.6rem;
     margin-top: 1.25rem;
+}
+
+.modal-footer #btn-clear-url {
+    margin-right: auto;
+}
+
+@media (max-width: 480px) {
+    .modal-footer {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.6rem;
+    }
+
+    .modal-footer #btn-clear-url {
+        grid-column: span 2;
+        margin-right: 0;
+        justify-content: center;
+        text-align: center;
+        order: 4;
+    }
+
+    .modal-footer #btn-paste-url {
+        grid-column: 1;
+        justify-content: center;
+        order: 1;
+    }
+
+    .modal-footer #btn-clear-input {
+        grid-column: 2;
+        justify-content: center;
+        order: 2;
+    }
+
+    .modal-footer #btn-submit-url {
+        grid-column: span 2;
+        justify-content: center;
+        padding: 0.85rem 1rem;
+        font-size: 1rem;
+        order: 3;
+    }
 }
 
 /* Badges de Subtipo de Tarea */
